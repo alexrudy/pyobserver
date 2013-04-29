@@ -1,0 +1,13 @@
+Defaults:
+  Starlist: starlist.txt
+  Region: starlist.reg
+Region:
+  CoordinateSystem: fk5
+  Radius: 2"
+Image:
+  CoordinateSystem: image
+  Radius: 5
+BackUp:
+  modes:
+    all: {}
+  
