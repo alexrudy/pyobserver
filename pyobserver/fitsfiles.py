@@ -6,7 +6,17 @@
 #  Created by Alexander Rudy on 2013-02-15.
 #  Copyright 2013 Alexander Rudy. All rights reserved.
 # 
-from __future__ import division, unicode_literals
+"""
+FITSFiles – Management of FITS Files
+====================================
+
+This module contains pythonic objects to represent FITS files, as well as the controllers which allow for the command-line interaction with these tools.
+
+.. autoclass:: 
+
+"""
+from __future__ import (absolute_import, unicode_literals, division,
+                        print_function)
 
 from pyshell.subcommand import SCController, SCEngine
 from pyshell.util import query_yes_no, force_dir_path, collapseuser, check_exists
@@ -95,9 +105,9 @@ class FITSHeaderTable(object):
             for key in keywords:
                 if key not in header:
                     if error:
-                        header[key] #Purposefully trigger a key error for missing header values
+                        raise KeyError("Keyword '%s' not in file '%s'" % (key, header["OPENNAME"]))
                     if warn:
-                        warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key,header["OPENNAME"]))
+                        warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key, header["OPENNAME"]))
                     header[key] = blank
             collection.append(header)
         self._collection = collection
@@ -153,7 +163,9 @@ class FITSHeaderTable(object):
     def logstring(self,order=None,collection=None):
         """Create a log-file like string from a collection.
         
-        :param collection: The collection to use. If ``None``, use the current internal collection."""
+        :param collection: The collection to use. If ``None``, use the current internal collection.
+        
+        """
         if collection is None:
             collection = self._collection
         if order is None:
@@ -175,9 +187,8 @@ class FITSHeaderTable(object):
         # Format string ready for formatting
         column_keywords = column_line.format(*key_list)
         
-        output = [column_keywords.format(**header_data)]
-        for header in collection:
-            output += [column_keywords.format(**header)]
+        output = [ column_keywords.format(**header_data) ]
+        output += [ column_keywords.format(**header) for header in collection ]
         return output
         
     
@@ -203,11 +214,11 @@ class FITSDataGroups(collections.MutableSet):
         if len(self._keywords) > len(_formats):
             _formats += [self.EMPTYFORMAT] * (len(self._keywords) - len(_formats))
         self._formats = []
-        for format in _formats:
-            if format is None:
+        for _format in _formats:
+            if _format is None:
                 self._formats.append(self.EMPTYFORMAT)
             else:
-                self._formats.append(format)
+                self._formats.append(_format)
         
         
     def __iter__(self):
@@ -296,7 +307,7 @@ class FITSDataGroups(collections.MutableSet):
         
     def addmany(self,*items):
         """docstring for addmany"""
-        return [self.add(item) for item in items]
+        return [ self.add(item) for item in items ]
             
         
     def add(self,item):
@@ -437,112 +448,49 @@ class ListFITSDataGroup(FITSDataGroup):
         """Return the proper keyhash"""
         return os.path.basename(self.filename)
         
-        
-    
 
-class FITSGroup(SCEngine):
-    """Create a list of groups from FITS header attributes."""
-    
-    command = 'group'
-    
-    help = "Make a list of groups for a collection of FITS files."
-    
-    description = fill("Creates a text table with the requested header information for a bunch of FITS files.")
-        
-    def configure(self):
-        """Configure the logging"""
-        super(FITSGroup, self).configure()
-        self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to group.",action='store',nargs="?",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
-        self.parser.add_argument('keywords',nargs="*",help="Keywords to group.",action='store',default=self.config.get("Log.Keywords"))
-        
-    def do(self):
-        """Make the log table"""
-        if os.path.exists(self.opts.input):
-            with open(self.opts.input,'r') as inlist:
-                self.files = inlist.readlines()
-        else:
-            self.files = glob.glob(self.opts.input)
-        
-        print("Will group %d files." % len(self.files))
-        self.data = FITSHeaderTable()
-        self.data.read(self.files)
-        self.data.normalize(self.opts.keywords)
-        self.data.group(self.opts.keywords)
-        output = self.data.groups.table()
-        print("\n".join(output))
-        print("%d files grouped." % len(self.data.collection))
 
-class FITSLog(SCEngine):
-    """Create a log from FITS header attributes."""
-    command = 'log'
-        
-    help = "Make a log file for a collection of FITS files."
+class FITSCLI(SCEngine):
+    """A base class for command line interfaces using pyshell."""
     
-    description = fill("Creates a text table with the requested header information for a bunch of FITS files.")
-        
-    def configure(self):
+    options = []
+    
+    def after_configure(self):
         """Configure the logging"""
-        super(FITSLog, self).configure()
-        self.parser.add_argument('-o','--output',help="Output file name",default=self.config.get("Defaults.Log.OutputName",False),action='store',dest='log')
-        self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to log.",action='store',nargs="?",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
-        self.parser.add_argument('keywords',nargs="*",help="Keywords to log.",action='store',default=self.config.get("Log.Keywords"))
-        
-    def do(self):
-        """Make the log table"""
-        if not self.opts.log:
-            cdir = os.path.split(os.getcwd())[-1]
-            self.opts.log = "%s.log" % (cdir)
-        elif os.path.exists(self.opts.log):
-            print("Log %r already exists. Will overwirte." % self.opts.log)
-        
-        if os.path.exists(self.opts.input):
-            with open(self.opts.input,'r') as inlist:
-                self.files = inlist.readlines()
-        else:
-            self.files = glob.glob(self.opts.input)
-        
-        print("Will log %d files." % len(self.files))
-        self.data = FITSHeaderTable()
-        self.data.read(self.files)
-        self.data.collect(*self.opts.keywords)
-        output = self.data.logstring(order=self.opts.keywords)
-        if self.opts.log:
-            with open(self.opts.log,'w') as outputfile:
-                outputfile.write("\n".join(output))
-        else:
-            print("\n".join(output))
-            print("%d files found." % len(self.data.collection))
-        
-        
-    
-    
-class MakeList(SCEngine):
-    """Make a list of files with certain header attributes"""
-    def __init__(self, command = 'list'):
-        super(MakeList, self).__init__(command = command)
-        
-    help = "Make a list of FITS files that match criteria."
-    
-    description = "Make a list of FITS files that match given criteria using direct matching, substring matching, or regular expressions."
-    
-    def configure(self):
-        super(MakeList, self).configure()
-        self.parser.add_argument('-i','--input',action='store',
-            default=self.config.get("Defaults.Log.Glob","*.fits"),help="Input file glob",metavar="*.fits")
-        self.parser.add_argument('-o','--output',action='store',
-            default=self.config.get("Defaults.List.Name",False),help="Output file list name",metavar="files.list")
-        self.parser.add_argument('--re',action='store_true',
-            help="Use regular expressions to parse header values.")
-        self.parser.add_argument('-l','--log',action='store_true',
-            help="Store a full log file, not just a list of files that match this keyword")
-        self.parser.add_argument('keywords',nargs="*",action='store',
-            help='header search keywords',metavar='KWD=value')
-        
+        super(FITSCLI, self).after_configure()
+        if "i" in self.options:
+            self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to use.",action='store',nargs="+",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
+        if "o" in self.options:
+            self.parser.add_argument('-o','--output',help="Output file name",default=self.config.get("Defaults.Log.OutputName",False),action='store',dest='output')
+        if "skw" in self.options:
+            self.parser.add_argument('--re',action='store_true',
+                help="Use regular expressions to parse header values.")
+            self.parser.add_argument('keywords',nargs="*",action='store',
+                help='File Header search keywords. The "=" and "value" is an optional search argument.',metavar='KWD=value')
+        if "gkw" in self.options:
+            self.parser.add_argument('keywords',nargs="*",help="Keywords to group.",action='store',default=self.config.get("Log.Keywords"))
             
-    def do(self):
-        """Run the search itself"""
-        self._search = {}
-        self._order = []
+                
+            
+        
+    def get_files(self):
+        """Get the list of files used by the -i command line argument."""
+        from pyshell.util import check_exists, warn_exists
+        if check_exists(self.opts.input):
+            with open(self.opts.input, 'r') as inlist:
+                files = [ line.rstrip("\n\r") for line in inlist ]
+        else:
+            infiles = self.opts.input.split()
+            files = []
+            for infile in infiles:
+                files += glob.glob(infile)
+        for file in files:
+            warn_exists(file,"FITS File",True) 
+        return files
+        
+    def get_keywords(self):
+        """Get the dictionaries for search keywords"""
+        search = collections.OrderedDict()
         for pair in self.opts.keywords:
             if len(pair.split("=",1)) == 2:
                 key,value = pair.split("=",1)
@@ -557,32 +505,114 @@ class MakeList(SCEngine):
                 key,value = pair,True
             else:
                 self.parser.error("Argument for Malformed Keyword Pair: '%s'" % pair)
-            self._search[key] = value
-            self._order.append(key)
-        if os.path.exists(self.opts.input):
-            with open(self.opts.input,'r') as inlist:
-                self.files = [line.rstrip("\n\r") for line in inlist]
-            if not os.path.exists(self.files[0]):
-                self.parser.error("Malformed input list '%s' \n File does not exist '%s'" % (self.opts.input,firstline))
+            search[key] = value
+        return search
+        
+class FITSShow(FITSCLI):
+    """Show information about a fits file"""
+    
+    command = 'show'
+    
+    help = "Show details about the first found fits file."
+    
+    description = fill("Shows the full header for the first fits file found.")
+    
+    options = [ "i" ]
+
+class FITSGroup(FITSCLI):
+    """Create a list of groups from FITS header attributes."""
+    
+    command = 'group'
+    
+    help = "Make a list of groups for a collection of FITS files."
+    
+    description = fill("Creates a text table with the requested header information for a bunch of FITS files.")
+        
+    options = [ "i", "skw" ]        
+        
+    def do(self):
+        """Make the log table"""
+        files = self.get_files()
+        search = self.get_keywords()
+        print("Will group %d files." % len(files))
+        data = FITSHeaderTable()
+        data.read(files)
+        data.search(**search)
+        data.group(search.keys())
+        output = data.groups.table()
+        print("\n".join(output))
+        print("%d files grouped." % len(data.collection))
+
+class FITSLog(FITSCLI):
+    """Create a log from FITS header attributes."""
+    
+    command = 'log'
+    
+    options = [ "i", "o", "skw" ]
+    
+    help = "Make a log file for a collection of FITS files."
+    
+    description = fill("Creates a text table with the requested header information for a bunch of FITS files.")
+        
+    def do(self):
+        """Make the log table"""
+        from pyshell.util import check_exists
+        if self.opts.output and check_exists(self.opts.output):
+            print("Log %r already exists. Will overwirte." % self.opts.output)
+        
+        files = self.get_files()
+        search = self.get_keywords()
+        
+        print("Will log %d files." % len(files))
+        data = FITSHeaderTable()
+        data.read(files)
+        data.collect(**search)
+        output = data.logstring(order=search.keys())
+        if self.opts.output:
+            with open(self.opts.output,'w') as outputfile:
+                outputfile.write("\n".join(output))
         else:
-            infiles = self.opts.input.split()
-            self.files = []
-            for infile in infiles:
-                self.files = glob.glob(infile)
-        if len(self.files) == 0:
-            self.parser.error("No files specified to search")
-        print("Searching %d files." % len(self.files))
-        self.data = FITSHeaderTable()
-        self.data.read(self.files)
-        self.data.search(**self._search)
-        output = self.data.logstring(order=self._order)
-        print "\n".join(output)
-        print "%d files found." % len(self.data.collection)
+            print("\n".join(output))
+            print("%d files found." % len(data.collection))
+        
+        
+    
+    
+class FITSList(FITSCLI):
+    """Make a list of files with certain header attributes"""
+    
+    command = "list"
+    
+    options = [ "i", "skw" ]
+    
+    help = "Make a list of FITS files that match criteria."
+    
+    description = "Make a list of FITS files that match given criteria using direct matching, substring matching, or regular expressions."
+    
+    def after_configure(self):
+        super(FITSList, self).after_configure()
+        self.parser.add_argument('-o','--output',action='store',
+            default=self.config.get("Defaults.List.Name",False),help="Output file list name",metavar="files.list")
+        self.parser.add_argument('-l','--log',action='store_true',
+            help="Store a full log file, not just a list of files that match this keyword")
+        
+            
+    def do(self):
+        """Run the search itself"""
+        search = self.get_keywords()
+        files = self.get_files()
+        print("Searching %d files." % len(files))
+        data = FITSHeaderTable()
+        data.read(files)
+        data.search(**search)
+        output = data.logstring(order=search.keys())
+        print("\n".join(output))
+        print("%d files found." % len(data.collection))
         
         if self.opts.output:
             if not self.opts.log:
-                output = self.data.liststring()
+                output = data.liststring()
             with open(self.opts.output,'w') as fnamelist:
                 fnamelist.write("\n".join(output))
-            print "Wrote file %s to '%s'" % ("log" if self.opts.log else "list",self.opts.output)
+            print("Wrote file %s to '%s'" % ("log" if self.opts.log else "list",self.opts.output))
         
