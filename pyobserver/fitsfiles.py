@@ -10,19 +10,20 @@
 FITSFiles – Management of FITS Files
 ====================================
 
-This module contains pythonic objects to represent FITS files, as well as the controllers which allow for the command-line interaction with these tools.
+This module contains pythonic objects to represent FITS files, as well as the controllers which allow for the command-line interaction with these tools. The primary class is the :class:`FITSHeaderTable`, which is a searchable, filterable collection of FITS Headers.
 
-.. autoclass:: 
+.. autoclass:: FITSHeaderTable
+    :members:
 
 """
 from __future__ import (absolute_import, unicode_literals, division,
                         print_function)
 
 from pyshell.subcommand import SCController, SCEngine
-from pyshell.util import query_yes_no, force_dir_path, collapseuser, check_exists
+from pyshell.util import query_yes_no, force_dir_path, collapseuser, check_exists, deprecatedmethod
 
 import numpy as np
-import pyfits as pf
+import astropy.io.fits as pf
 
 import os, os.path, glob, sys
 import shlex
@@ -38,7 +39,7 @@ def silent_getheader(filename):
     This is a simple wrapper function to silence warnings from PyFITS (which has gotten noisy) and to attempt to ignore inconsistencies in header validation. It seems that many instruments don't write strictly valid FITS headers, which is problematic, but not problematic enough that I want to see a warning every time I try to load one!"""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        header = pf.getheader(filename,ignore_missing_end=True)
+        header = pf.getheader(filename,ignore_missing_end=True).copy()
     return header
     
 def silent_getheaders(filename, close=True):
@@ -51,7 +52,7 @@ def silent_getheaders(filename, close=True):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         hdulist = pf.open(filename,ignore_missing_end=True)
-        headers = [ hdu.header for hdu in hdulist ]
+        headers = [ hdu.header.copy() for hdu in hdulist ]
         if close:
             hdulist.close()
     return headers
@@ -83,20 +84,18 @@ class FITSHeaderTable(list):
     
     @property
     def files(self):
-        """A set of filenames in this HeaderTable"""
+        """A list of filenames in this HeaderTable"""
         return [ header["OPENNAME"] for header in self ]
         
     def copy(self):
         """Return a copy of this object."""
         return self.__class__([ hdr for hdr in self ])
         
-    def read(self, files=None):
-        """Get FITS Headers from each file in the `files` list (or stored from a call to :meth:`glob`).
+    def read(self, files):
+        """Get FITS Headers from each file in `files`. This method will load all of the headers for each file (including FITS extension headers).
         
-        Files read in this method will appear in :attr:`collection` and :attr:`headers` as pyfits Header objects.
+        :param files: The list of file names to be loaded.
         
-        :param files: The list of files to be loaded. If ``None``, use the prepared internal list of files.
-        :param bool reset: ``True`` (default) will reset, not append to, the internal list of headers.
         """
         for file in files:
             headers = silent_getheaders(file)
@@ -109,21 +108,26 @@ class FITSHeaderTable(list):
         
     @classmethod
     def fromfiles(cls, files):
-        """Create a FITSHeaderTable from a list of files."""
+        """Create a FITSHeaderTable from a list of files using :meth:`read`.
+        
+        :param files: The list of file names to be loaded.
+        
+        """
         obj = cls()
         obj.read(files)
         return obj
         
-    def collect(self,*keywords):
-        """Backwards compatibility for normalize header functions."""
-        return self.normalize(keywords,blank="",warn=True,error=False)
     
     def normalize(self,keywords,blank="",warn=True,error=False):
         """Collect and normalize a set of headers by keyword.
         
-        :args keywords: The keywords to search for.
+        :param keywords: The keywords to search for.
+        :param string blank: The blank value fill missing keywords.
+        :param bool warn: Whether to raise a warning for missing keywords.
+        :param bool error: Whether to raise a :exc:`KeyError` for missing keywords.
+        :returns: A reference to this object.
         
-        This function ensures that each collected header contains a minimal value for every requested keyword. The minimum value is by default the empty string. The function will raise a warning if the requested keyword is not present. This function acts on :attr:`collection` and returns the collection"""
+        This function ensures that each collected header contains a minimal value for every requested keyword. The minimum value is by default the empty string. The function will raise a warning if the requested keyword is not present."""
         keywords = list(keywords)
         if "OPENNAME" not in keywords:
             keywords.append("OPENNAME")
@@ -141,11 +145,14 @@ class FITSHeaderTable(list):
         """Search for headers that match specific keyword values.
         
         :param keywords: Arbitrary keyword-style arguments specfiying the search criteria.
+        :returns: A new HeaderTable object filtered down.
         
         All searches are performed with the "AND" operator. Keyword arguments should be of the form KEYWORD="search value" where "search value" can be one of the following types:
         - A string or other basic python literal. In this case, the keyword value is matched against the entire literal.
         - A regular expression object from :func:`re.compile`, where :meth:`match` is used to match the compiled regular expression to the keyword value.
-        - A boolean value. True means that you only want headers which have the specified keyword. False means you only want headers which **don't** have the specified keyword. For ``False``, the keyword value will be normalized to the empty stirng (for logging/listing purposes). """ 
+        - A boolean value. True means that you only want headers which have the specified keyword. False means you only want headers which **don't** have the specified keyword. For ``False``, the keyword value will be normalized to the empty stirng (for logging/listing purposes).
+        
+        """ 
         if "OPENNAME" not in keywords:
             keywords["OPENNAME"] = True
         results = self.__class__()
@@ -450,7 +457,7 @@ class FITSCLI(SCEngine):
             self.parser.add_argument('--re',action='store_true',
                 help="Use regular expressions to parse header values.")
             self.parser.add_argument('keywords',nargs="*",action='store',
-                help='File Header search keywords. The "=" and "value" is an optional search argument.',metavar='KWD=value')
+                help="File Header search keywords. 'KWD' is the FITS header keyword to seach for, and 'value' is the search value. See `--re` to use 'value' as a regular expression.",metavar='KWD=value')
         if "gkw" in self.options:
             self.parser.add_argument('keywords',nargs="*",help="Keywords to group.",action='store',default=self.config.get("Log.Keywords"))
             
@@ -496,9 +503,9 @@ class FITSShow(FITSCLI):
     
     command = 'show'
     
-    help = "Show details about the first found fits file."
+    help = "Show details about a group of FITS files."
     
-    description = fill("Shows the full header for the first fits file found.")
+    description = fill("Shows the full header for the fits files found.")
     
     options = [ "i", "o", "skw" ]
     
@@ -520,7 +527,7 @@ class FITSGroup(FITSCLI):
     
     help = "Make a list of groups for a collection of FITS files."
     
-    description = fill("Creates a text table with the requested header information for a bunch of FITS files.")
+    description = fill("Creates a text table with the requested header information grouped for a bunch of FITS files. Groups are collections of files which have identical header values. Files can be filtered before grouping using the 'KEYWORD=value' search syntax.")
         
     options = [ "i", "skw" ]        
         
@@ -581,9 +588,9 @@ class FITSList(FITSCLI):
     def after_configure(self):
         super(FITSList, self).after_configure()
         self.parser.add_argument('-o','--output',action='store',
-            default=self.config.get("Defaults.List.Name",False),help="Output file list name",metavar="files.list")
+            default=self.config.get("Defaults.List.Name",False),help="Output list file name.",metavar="files.list")
         self.parser.add_argument('-l','--log',action='store_true',
-            help="Store a full log file, not just a list of files that match this keyword")
+            help="Store a full log file, not just a list of files that match this keyword.")
         
             
     def do(self):
