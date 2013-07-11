@@ -1,6 +1,6 @@
 # 
 #  .gitignore
-#  pynirc2
+#  pyobserver
 #  
 #  Created by Alexander Rudy on 2012-11-20.
 #  Copyright 2012 Alexander Rudy. All rights reserved.
@@ -15,6 +15,7 @@
 
 # Build Info
 *.egg-info
+build/*
 
 examples/*
 tests/testdata/*
