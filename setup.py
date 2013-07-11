@@ -7,9 +7,23 @@
 #  Copyright 2012 Alexander Rudy. All rights reserved.
 # 
 
-from distribute_setup import use_setuptools
-use_setuptools()
+import sys
+
+try:
+    import setuptools
+except ImportError:
+    from distribute_setup import use_setuptools
+    use_setuptools()
 from setuptools import setup, find_packages
+
+from distutils.extension import Extension
+try:
+    from Cython.Distutils import build_ext
+except ImportError:
+    print("Cython required!")
+    sys.exit()
+
+ext_modules = [ Extension("combine", ["combine.pyx"]) ]
 
 from pyobserver import version
 
@@ -18,7 +32,7 @@ setup(
     version = version,
     packages = find_packages(exclude=['tests']),
     package_data = {'pyobserver': ['pyobserver/data/*']},
-    install_requires = ['distribute','astropy>=0.2','pyshell'],
+    install_requires = ['distribute','astropy>=0.2','pyshell','cython'],
     author = "Alexander Rudy",
     author_email = "arrudy@ucsc.edu",
     entry_points = {
@@ -26,4 +40,6 @@ setup(
             "PO = pyobserver.cli:POcommand.script"
         ],
     },
+    ext_modules = ext_modules,
+    cmd_class = {'build_ext': build_ext},
     )
