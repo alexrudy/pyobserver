@@ -23,7 +23,9 @@ except ImportError:
     print("Cython required!")
     sys.exit()
 
-ext_modules = [ Extension("combine", ["combine.pyx"]) ]
+ext_modules = [ Extension("pyobserver.combine", ["pyobserver/combine.pyx"],
+ include_dirs = ['/opt/local/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/numpy/core/include']
+ ) ]
 
 from pyobserver import version
 
@@ -41,5 +43,5 @@ setup(
         ],
     },
     ext_modules = ext_modules,
-    cmd_class = {'build_ext': build_ext},
+    cmdclass = {'build_ext': build_ext},
     )

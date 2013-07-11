@@ -5,8 +5,16 @@
 #  Created by Alexander Rudy on 2012-11-20.
 #  Copyright 2012 Alexander Rudy. All rights reserved.
 # 
+
+# Combiled Files
 *.pyc
+*.so
+*.c
+
 .DS_Store
+
+# Build Info
 *.egg-info
+
 examples/*
 tests/testdata/*
