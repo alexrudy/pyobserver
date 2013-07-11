@@ -25,6 +25,7 @@ import numpy as np
 import pyfits as pf
 
 import os, os.path, glob, sys
+import shlex
 import re, ast
 import warnings, logging
 import datetime
@@ -41,37 +42,53 @@ def silent_getheader(filename):
     return header
     
 def silent_getheaders(filename, close=True):
-    """Return a list of all headers. Ignore validation warnings."""
+    """Return a list of all headers. Ignore validation warnings and load warnings along the way.
+    
+    This is a wrapper function which silences warnings from PyFITS and produces a list of all of the headers in a single HDU List object.
+    
+    :param bool close: Whether to close the HDUlist
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         hdulist = pf.open(filename,ignore_missing_end=True)
         headers = [ hdu.header for hdu in hdulist ]
-        hdulist.close()
+        if close:
+            hdulist.close()
     return headers
     
+def readfilelist(filename):
+    """Read a file list and provide the list of files."""
+    dirname = os.path.dirname(filename)
+    files = []
+    with open(filename,'r') as stream:
+        for line in stream:
+            fname = os.path.join(dirname,line.rstrip("\n"))
+            if not line.startswith("#"):
+                files.append(fname)
+    return files
+    
 class FITSHeaderTable(list):
-    """Manages sets of FITS headers, search through them and collect approprate sets of information."""
-    def __init__(self):
+    """Manages sets of FITS headers, search through them and collect approprate sets of information.
+    
+    This class behaves like a list of FITS Headers (using pyfits as the header class) which can be filtered using instance methods.
+    """
+    def __init__(self, iterable=None):
         super(FITSHeaderTable, self).__init__()
-        self._headers = [] # Original list, to prevent re-reading data.
+        if iterable is not None:
+            self += iterable
         
-    @property
-    def collection(self):
-        """The collected (and possibly filtered) set of files."""
-        return self
-        
+    def __repr__(self):
+        """Representation of this object."""
+        return "{:s}{:r}".format(self.__class__.__name__, self.files)
+    
     @property
     def files(self):
-        """A list of filenames in this HeaderTable"""
+        """A set of filenames in this HeaderTable"""
         return [ header["OPENNAME"] for header in self ]
         
     def copy(self):
         """Return a copy of this object."""
         return self.__class__([ hdr for hdr in self ])
-        
-    def glob(self,globstring):
-        """Use shell-style globbing (from :mod:`glob`) to read file headers."""
-        self.read( glob.glob(globstring) )
         
     def read(self, files=None):
         """Get FITS Headers from each file in the `files` list (or stored from a call to :meth:`glob`).
@@ -81,16 +98,21 @@ class FITSHeaderTable(list):
         :param files: The list of files to be loaded. If ``None``, use the prepared internal list of files.
         :param bool reset: ``True`` (default) will reset, not append to, the internal list of headers.
         """
-        with warnings.catch_warnings(record=True) as wlist:
-            for file in files:
-                headers = silent_getheaders(file)
-                for header in headers:
-                    if "FILENAME" not in header:
-                        header["FILENAME"] = (os.path.basename(file),'Original File name')
-                    if "OPENNAME" not in header:
-                        header["OPENNAME"] = (os.path.relpath(file),'Opened File Name')
-                    self.append(header)
+        for file in files:
+            headers = silent_getheaders(file)
+            for header in headers:
+                if "FILENAME" not in header:
+                    header["FILENAME"] = (os.path.basename(file),'Original File name')
+                if "OPENNAME" not in header:
+                    header["OPENNAME"] = (os.path.relpath(file),'Opened File Name')
+                self.append(header)
         
+    @classmethod
+    def fromfiles(cls, files):
+        """Create a FITSHeaderTable from a list of files."""
+        obj = cls()
+        obj.read(files)
+        return obj
         
     def collect(self,*keywords):
         """Backwards compatibility for normalize header functions."""
@@ -134,18 +156,17 @@ class FITSHeaderTable(list):
                     warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key,header["OPENNAME"]))
                     keep = False
                 elif hasattr(search,'match'):
-                    if search.match(str(header[key])):
-                        keep = True
+                    if not search.match(str(header[key])):
+                        keep = False
                 elif isinstance(search,bool):
                     if search and key in header:
-                        keep = True
+                        pass
                     elif (not search) and (key not in header):
                         header[key] = ""
-                        keep = True
                     else:
                         keep = False
                 elif search == header[key]:
-                    keep = True
+                    pass
                 else:
                     keep = False
             if keep:
@@ -161,8 +182,8 @@ class FITSHeaderTable(list):
             self.groups.add(header)
         return self.groups
     
-    def logstring(self, order=None):
-        """Create a log-file like string from a collection.
+    def log(self, order=None):
+        """Create a log-file like list of strings from a collection.
         
         :param collection: The collection to use. If ``None``, use the current internal collection.
         
@@ -189,11 +210,6 @@ class FITSHeaderTable(list):
         output = [ column_keywords.format(**header_data) ]
         output += [ column_keywords.format(**header) for header in self ]
         return output
-        
-    
-    def liststring(self):
-        """Return a list of filenames from a collection."""
-        return self.files
 
 class FITSDataGroups(collections.MutableSet):
     """A set of FITS data groups"""
@@ -262,16 +278,9 @@ class FITSDataGroups(collections.MutableSet):
         
     def addlist(self,filename,asgroup=True):
         """Add a list of files as a ListFITSDataGroup"""
-        _files = []
-        with open(filename,'r') as stream:
-            for line in stream:
-                fname = os.path.join(os.path.dirname(filename),line.rstrip("\n"))
-                if not line.startswith("#") and os.path.exists(fname):
-                    _files.append(fname)
-        FHT = FITSHeaderTable()
-        headers = FHT.read(_files)
-        if len(headers) > 0 and not self.hasgroup(*headers):
-            self.add(ListFITSDataGroup(filename,headers,self.keywords,self.formats))
+        listgroup = ListFITSDataGroup(filename,self.keywords,self.formats)
+        if len(headers) > 0 and not self.hasgroup(*listgroup):
+            self.add(listgroup)
              
         
         
@@ -318,7 +327,7 @@ class FITSDataGroups(collections.MutableSet):
                 raise KeyError("DataGroup with hash {} already exists.".format(item.keyhash))
         hhash = self.type_to_hash(item)
         if item not in self:
-            self._groups[hhash] = FITSDataGroup(item,hhash,self.keywords,self.formats)
+            self._groups[hhash] = FITSDataGroup(item, hhash, self.keywords, self.formats)
         else:
             self._groups[hhash].append(item)
         return hhash
@@ -365,39 +374,14 @@ class FITSDataGroups(collections.MutableSet):
                 output += [row.format(*rowtuple)]
         return output
 
-class FITSDataGroup(collections.MutableSequence):
+class FITSDataGroup(FITSHeaderTable):
     """docstring for FITSDataGroup"""
     def __init__(self,header,keyhash,keywords,formats):
         """docstring for __init__"""
-        super(FITSDataGroup, self).__init__()
+        super(FITSDataGroup, self).__init__([header])
         self._keyhash = keyhash
         self._keywords = keywords
         self._formats = formats
-        self._headers = [header]
-        
-    def __contains__(self,value):
-        return value in self._headers
-    
-    def __iter__(self):
-        return iter(self._headers)
-        
-    def append(self,header):
-        self._headers += [header]
-        
-    def __setitem__(self,key,value):
-        return self._headers.__setitem__(key,value)
-        
-    def __getitem__(self,key):
-        return self._headers.__getitem__(key)
-        
-    def __delitem__(self,key):
-        return self._headers.__delitem__(key)
-        
-    def __len__(self):
-        return len(self._headers)
-        
-    def insert(self,index,value):
-        return self._headers.insert(index,value)
     
     @property
     def keywords(self):
@@ -407,7 +391,7 @@ class FITSDataGroup(collections.MutableSequence):
     @property
     def keylist(self):
         """Get the uniform keylist for this object."""
-        return { key:self._headers[0][key] for key in self.keywords }
+        return { key:self[0][key] for key in self.keywords }
         
     @property
     def keyhash(self):
@@ -416,18 +400,14 @@ class FITSDataGroup(collections.MutableSequence):
     @property
     def name(self):
         """Return the formatted name"""
-        return "-".join([ format.format(self.keylist[keyword]) for format,keyword in zip(self._formats,self.keywords) ]).replace(" ","-")
-        
-    @property
-    def files(self):
-        """docstring for files"""
-        return [ header["FILENAME"] for header in self._headers ]
+        return "-".join([ _format.format(self.keylist[keyword]) for _format,keyword in zip(self._formats, self.keywords) ]).replace(" ","-")
+    
         
 class ListFITSDataGroup(FITSDataGroup):
-    """A group of FITS files defined by an input list.ListFITSDataGroup"""
-    def __init__(self,listfile,headers,keywords,formats):
-        super(ListFITSDataGroup, self).__init__(header=headers[0],keyhash=listfile,keywords=keywords,formats=formats)
-        self._headers = headers
+    """A group of FITS files defined by an input list."""
+    def __init__(self,listfile,keywords,formats):
+        super(ListFITSDataGroup, self).__init__(header=None,keyhash=listfile,keywords=keywords,formats=formats)
+        self.read(readfilelist(listfile))
         self._list = listfile
         
     @property
@@ -461,9 +441,11 @@ class FITSCLI(SCEngine):
         """Configure the logging"""
         super(FITSCLI, self).after_configure()
         if "i" in self.options:
-            self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to use.",action='store',nargs="+",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
+            self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to use.",
+                action='store',nargs="+",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
         if "o" in self.options:
-            self.parser.add_argument('-o','--output',help="Output file name",default=self.config.get("Defaults.Log.OutputName",False),action='store',dest='output')
+            self.parser.add_argument('-o','--output',help="Output file name",
+                default=self.config.get("Defaults.Log.OutputName",False),action='store',dest='output')
         if "skw" in self.options:
             self.parser.add_argument('--re',action='store_true',
                 help="Use regular expressions to parse header values.")
@@ -479,10 +461,9 @@ class FITSCLI(SCEngine):
         """Get the list of files used by the -i command line argument."""
         from pyshell.util import check_exists, warn_exists
         if check_exists(self.opts.input):
-            with open(self.opts.input, 'r') as inlist:
-                files = [ line.rstrip("\n\r") for line in inlist ]
+            files = readfilelist(self.opts.input)
         else:
-            infiles = self.opts.input.split()
+            infiles = shlex.split(self.opts.input)
             files = []
             for infile in infiles:
                 files += glob.glob(infile)
@@ -525,13 +506,11 @@ class FITSShow(FITSCLI):
         """Do the work"""
         files = self.get_files()
         search = self.get_keywords()
-        data = FITSHeaderTable()
-        data.read(files)
-        print("Will get info on %d files." % len(data.collection))
+        data = FITSHeaderTable.fromfiles(files).search(**search)
+        print("Will get info on %d files." % len(data))
         if self.opts.output is False:
             self.opts.output = None
-            
-        [ pf.info(header["OPENNAME"], self.opts.output) for header in data.search(**search) ]
+        [ pf.info(header["OPENNAME"], self.opts.output) for header in data ]
                 
 
 class FITSGroup(FITSCLI):
@@ -550,11 +529,10 @@ class FITSGroup(FITSCLI):
         files = self.get_files()
         search = self.get_keywords()
         print("Will group %d files." % len(files))
-        data = FITSHeaderTable()
-        data.read(files)
-        output = data.search(**search).group(search.keys()).table()
+        data = FITSHeaderTable.fromfiles(files).search(**search).group(search.keys())
+        output = data.table()
         print("\n".join(output))
-        print("%d files grouped." % len(data.collection))
+        print("%d files grouped." % len(data))
 
 class FITSLog(FITSCLI):
     """Create a log from FITS header attributes."""
@@ -577,15 +555,14 @@ class FITSLog(FITSCLI):
         search = self.get_keywords()
         
         print("Will log %d files." % len(files))
-        data = FITSHeaderTable()
-        data.read(files)
-        output = data.search(**search).normalize(search.keys()).logstring(order=search.keys())
+        data = FITSHeaderTable.fromfiles(files).search(**search).normalize(search.keys())
+        output = data.log(order=search.keys())
         if self.opts.output:
             with open(self.opts.output,'w') as outputfile:
                 outputfile.write("\n".join(output))
         else:
             print("\n".join(output))
-            print("%d files found." % len(data.collection))
+            print("%d files found." % len(data))
         
         
     
@@ -614,15 +591,14 @@ class FITSList(FITSCLI):
         search = self.get_keywords()
         files = self.get_files()
         print("Searching %d files." % len(files))
-        data = FITSHeaderTable()
-        data.read(files)
-        output = data.normalize(search.keys()).search(**search).logstring(order=search.keys())
+        data = FITSHeaderTable.fromfiles(files).normalize(search.keys()).search(**search)
+        output = data.log(order=search.keys())
         print("\n".join(output))
         print("%d files found." % len(output))
         
         if self.opts.output:
             if not self.opts.log:
-                output = data.search(**search).liststring()
+                output = data.files
             with open(self.opts.output,'w') as fnamelist:
                 fnamelist.write("\n".join(output))
             print("Wrote file %s to '%s'" % ("log" if self.opts.log else "list",self.opts.output))
