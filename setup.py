@@ -19,6 +19,9 @@ setup(
     packages = find_packages(exclude=['tests']),
     package_data = {'pyobserver': ['pyobserver/data/*']},
     install_requires = ['distribute','astropy>=0.2','pyshell'],
+    dependency_links = [
+        'https://github.com/alexrudy/pyshell/archive/0.3.0.tar.gz#egg=pyshell-0.3.0',
+    ],
     author = "Alexander Rudy",
     author_email = "arrudy@ucsc.edu",
     entry_points = {
