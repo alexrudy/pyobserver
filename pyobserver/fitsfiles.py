@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# 
+#
 #  fitsfiles.py
 #  pynirc2
-#  
+#
 #  Created by Alexander Rudy on 2013-02-15.
 #  Copyright 2013 Alexander Rudy. All rights reserved.
-# 
+#
 """
 FITSFiles – Management of FITS Files
 ====================================
@@ -33,6 +33,12 @@ import datetime
 import collections
 from textwrap import fill
 
+try:
+    import cStringIO as io
+except ImportError:
+    import StringIO as io
+
+
 def silent_getheader(filename):
     """Get the headerfile without validation warnings.
     
@@ -41,7 +47,7 @@ def silent_getheader(filename):
         warnings.simplefilter("ignore")
         header = pf.getheader(filename,ignore_missing_end=True).copy()
     return header
-    
+
 def silent_getheaders(filename, close=True):
     """Return a list of all headers. Ignore validation warnings and load warnings along the way.
     
@@ -56,7 +62,7 @@ def silent_getheaders(filename, close=True):
         if close:
             hdulist.close()
     return headers
-    
+
 def readfilelist(filename):
     """Read a file list and provide the list of files."""
     dirname = os.path.dirname(filename)
@@ -67,7 +73,7 @@ def readfilelist(filename):
             if not line.startswith("#"):
                 files.append(fname)
     return files
-    
+
 class FITSHeaderTable(list):
     """Manages sets of FITS headers, search through them and collect approprate sets of information.
     
@@ -77,7 +83,7 @@ class FITSHeaderTable(list):
         super(FITSHeaderTable, self).__init__()
         if iterable is not None:
             self += iterable
-        
+    
     def __repr__(self):
         """Representation of this object."""
         return "{:s}{:r}".format(self.__class__.__name__, self.files)
@@ -86,11 +92,11 @@ class FITSHeaderTable(list):
     def files(self):
         """A list of filenames in this HeaderTable"""
         return [ header["OPENNAME"] for header in self ]
-        
+    
     def copy(self):
         """Return a copy of this object."""
         return self.__class__([ hdr for hdr in self ])
-        
+    
     def read(self, files):
         """Get FITS Headers from each file in `files`. This method will load all of the headers for each file (including FITS extension headers).
         
@@ -105,7 +111,7 @@ class FITSHeaderTable(list):
                 if "OPENNAME" not in header:
                     header["OPENNAME"] = (os.path.relpath(file),'Opened File Name')
                 self.append(header)
-        
+    
     @classmethod
     def fromfiles(cls, files):
         """Create a FITSHeaderTable from a list of files using :meth:`read`.
@@ -116,7 +122,7 @@ class FITSHeaderTable(list):
         obj = cls()
         obj.read(files)
         return obj
-        
+    
     
     def normalize(self,keywords,blank="",warn=True,error=False):
         """Collect and normalize a set of headers by keyword.
@@ -140,7 +146,7 @@ class FITSHeaderTable(list):
                         warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key, header["OPENNAME"]))
                     header[key] = blank
         return self
-        
+    
     def search(self,**keywords):
         """Search for headers that match specific keyword values.
         
@@ -152,7 +158,7 @@ class FITSHeaderTable(list):
         - A regular expression object from :func:`re.compile`, where :meth:`match` is used to match the compiled regular expression to the keyword value.
         - A boolean value. True means that you only want headers which have the specified keyword. False means you only want headers which **don't** have the specified keyword. For ``False``, the keyword value will be normalized to the empty stirng (for logging/listing purposes).
         
-        """ 
+        """
         if "OPENNAME" not in keywords:
             keywords["OPENNAME"] = True
         results = self.__class__()
@@ -195,6 +201,9 @@ class FITSHeaderTable(list):
         :param collection: The collection to use. If ``None``, use the current internal collection.
         
         """
+        from astropy.table import Table
+        import cStringIO as io
+        
         if order is None:
             order = self[0].keys()
             order.sort()
@@ -208,15 +217,20 @@ class FITSHeaderTable(list):
         
         # List of keys in column order
         key_list = ["OPENNAME"] + order
-        header_list = ["file"] + order
-        header_data = dict(zip(key_list,header_list))
+        header_list = [str("file")] + order
+        header_list = map(str,header_list)
         
-        # Format string ready for formatting
-        column_keywords = column_line.format(*key_list)
+        data_list = [ [ header[key] for header in self ] for key in key_list ]
         
-        output = [ column_keywords.format(**header_data) ]
-        output += [ column_keywords.format(**header) for header in self ]
-        return output
+        table = Table(data_list, names = header_list)
+        # header_data = dict(zip(key_list,header_list))
+        #
+        # # Format string ready for formatting
+        # column_keywords = column_line.format(*key_list)
+        #
+        # output = [ column_keywords.format(**header_data) ]
+        # output += [ column_keywords.format(**header) for header in self ]
+        return table
 
 class FITSDataGroups(collections.MutableSet):
     """A set of FITS data groups"""
@@ -240,11 +254,11 @@ class FITSDataGroups(collections.MutableSet):
             else:
                 self._formats.append(_format)
         
-        
+    
     def __iter__(self):
         """Iterable"""
         return self._groups.itervalues()
-        
+    
     def __len__(self):
         """Length"""
         return self._groups.__len__()
@@ -263,34 +277,34 @@ class FITSDataGroups(collections.MutableSet):
             return hhash in [group.name for group in self]
         else:
             return hhash in self.hashes
-        
+    
     @property
     def keywords(self):
         """docstring for keywords"""
         return self._keywords
-        
+    
     @property
     def formats(self):
         """docstring for formats"""
         return self._formats
-        
+    
     @property
     def hashes(self):
         """Return the data group's hashes"""
         return self._groups.keys()
-        
+    
     def get(self,hhash,value=None):
         """Return a specific data group"""
         return self._groups.get(hhash,value)
-        
+    
     def addlist(self,filename,asgroup=True):
         """Add a list of files as a ListFITSDataGroup"""
         listgroup = ListFITSDataGroup(filename,self.keywords,self.formats)
         if len(headers) > 0 and not self.hasgroup(*listgroup):
             self.add(listgroup)
-             
         
         
+    
     def isgroup(self,*headers):
         """Check whether the provided headers constitutes a group here."""
         headers = list(headers)
@@ -300,7 +314,7 @@ class FITSDataGroups(collections.MutableSet):
             if self.make_hash(header) != masterhash:
                 return False
         return True
-        
+    
     def hasgroup(self,*headers):
         """Return whether the headers have a group."""
         if self.isgroup(*headers):
@@ -312,17 +326,17 @@ class FITSDataGroups(collections.MutableSet):
                 hfiles.sort()
                 return hfiles == incfiles
         return False
-        
+    
     def islist(self,item):
         """Return whether this item is a list."""
         khash = self.type_to_hash(item)
         return isinstance(self._groups[khash],ListFITSDataGroup)
-        
+    
     def addmany(self,*items):
         """Add many items simultaneously."""
         return [ self.add(item) for item in items ]
-            
         
+    
     def add(self,item):
         """Add a data group, returning its new hash."""
         
@@ -338,7 +352,7 @@ class FITSDataGroups(collections.MutableSet):
         else:
             self._groups[hhash].append(item)
         return hhash
-        
+    
     def type_to_hash(self,item):
         """docstring for type_to_hash"""
         if isinstance(item,basestring) and check_exists(item) and item.endswith(".fits"):
@@ -350,16 +364,16 @@ class FITSDataGroups(collections.MutableSet):
         else:
             raise TypeError("Can't convert {} to Header Hash".format(type(item)))
         return hhash
-        
+    
     def make_hash(self,dictionary):
         """Make the appropraite keyword hash for a given dictionary"""
         return unicode("".join([ unicode(key)+u"="+unicode(dictionary[key]) for key in self.keywords ]))
-        
+    
     def discard(self,item):
         """Discard a group from this group set."""
         hhash = self.type_to_hash(item)
         del self._groups[hhash]
-        
+    
     def table(self):
         """Return a text table for this datagroup"""
         col = "{:<20}"
@@ -399,44 +413,44 @@ class FITSDataGroup(FITSHeaderTable):
     def keylist(self):
         """Get the uniform keylist for this object."""
         return { key:self[0][key] for key in self.keywords }
-        
+    
     @property
     def keyhash(self):
         return self._keyhash
-        
+    
     @property
     def name(self):
         """Return the formatted name"""
         return "-".join([ _format.format(self.keylist[keyword]) for _format,keyword in zip(self._formats, self.keywords) ]).replace(" ","-")
-    
         
+
 class ListFITSDataGroup(FITSDataGroup):
     """A group of FITS files defined by an input list."""
     def __init__(self,listfile,keywords,formats):
         super(ListFITSDataGroup, self).__init__(header=None,keyhash=listfile,keywords=keywords,formats=formats)
         self.read(readfilelist(listfile))
         self._list = listfile
-        
+    
     @property
     def name(self):
         """FormattedName"""
         return os.path.basename(os.path.splitext(self._list)[0])
-        
+    
     @property
     def filename(self):
         """Return the full filename"""
         return self._list
-        
+    
     @property
     def keyhash(self):
         """Return the proper keyhash"""
         return os.path.basename(self.filename)
-        
+    
     @property
     def keylist(self):
         """The master list of keys doesn't make sense for an arbitrary list."""
         raise ValueError("The Master List of Keys can't be retrieved from a list.")
-        
+
 
 
 class FITSCLI(SCEngine):
@@ -447,12 +461,31 @@ class FITSCLI(SCEngine):
     def after_configure(self):
         """Configure the logging"""
         super(FITSCLI, self).after_configure()
+        
+        # Input settings
         if "i" in self.options:
             self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to use.",
                 action='store',nargs="+",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
-        if "o" in self.options:
+        else:
+            self.opts.input = False
+        
+        # Output settings:
+        if "ol" in self.options:
             self.parser.add_argument('-o','--output',help="Output file name",
                 default=self.config.get("Defaults.Log.OutputName",False),action='store',dest='output')
+            self.opts.log = True
+        
+        if "oi" in self.options or "oil" in self.options:
+            self.parser.add_argument('-o','--output',action='store',
+                default=self.config.get("Defaults.List.Name",False),help="Output list file name.",metavar="files.list")
+        
+        if "oil" in self.options:
+            self.parser.add_argument('-l','--log',action='store_true',
+                help="Store a full log file, not just a list of files that match this keyword.")
+        elif "oi" in self.options:
+            self.opts.log = False
+        
+        # Search settings:
         if "skw" in self.options:
             self.parser.add_argument('--re',action='store_true',
                 help="Use regular expressions to parse header values.")
@@ -460,10 +493,10 @@ class FITSCLI(SCEngine):
                 help="File Header search keywords. 'KWD' is the FITS header keyword to seach for, and 'value' is the search value. See `--re` to use 'value' as a regular expression.",metavar='KWD=value')
         if "gkw" in self.options:
             self.parser.add_argument('keywords',nargs="*",help="Keywords to group.",action='store',default=self.config.get("Log.Keywords"))
-            
                 
             
         
+    
     def get_files(self):
         """Get the list of files used by the -i command line argument."""
         from pyshell.util import check_exists, warn_exists
@@ -475,9 +508,9 @@ class FITSCLI(SCEngine):
             for infile in infiles:
                 files += glob.glob(infile)
         for file in files:
-            warn_exists(file,"FITS File",True) 
+            warn_exists(file,"FITS File",True)
         return files
-        
+    
     def get_keywords(self):
         """Get the dictionaries for search keywords"""
         search = collections.OrderedDict()
@@ -497,7 +530,49 @@ class FITSCLI(SCEngine):
                 self.parser.error("Argument for Malformed Keyword Pair: '%s'" % pair)
             search[key] = value
         return search
+    
+    def get_ds9(self, target=None):
+        """Open DS9"""
+        target = self.__class__.__name__ if target is None else target
+        try:
+            import ds9 as pyds9
+            ds9 = pyds9.ds9(target=target)
+        except ImportError:
+            raise
+        except Exception:
+            self.log.critical("Can't get to DS9! Try closing all open DS9 windows...")
+            raise
+        return ds9
+    
+    def output_table(self, table, more=None):
+        """Output a table to the command line."""
+        if more is None:
+            more = self.config.get("UI.Table.more",False)
         
+        if not self.opts.log:
+            include = ['file']
+            _format = 'ascii.fixed_width_no_header'
+        else:
+            include = table.colnames
+            _format = 'ascii.fixed_width'
+        
+        if self.opts.output:
+            table.write(self.opts.output, format=_format, bookend=False, delimiter=None, include_names = include)
+            print("Wrote file {:s} to '{:s}'".format("log" if self.opts.log else "list",self.opts.output))
+        
+        if more:
+            if not self.opts.log:
+                table['file'].more()
+            else:
+                table.more()
+            print("%d files found." % len(table))
+        
+        elif not self.opts.output:
+            table.write(sys.stdout, format=_format, bookend=False, delimiter=None, include_names = include)
+            print("%d files found." % len(table))
+    
+
+
 class FITSShow(FITSCLI):
     """Show information about a fits file"""
     
@@ -505,9 +580,9 @@ class FITSShow(FITSCLI):
     
     help = "Show details about a group of FITS files."
     
-    description = fill("Shows the full header for the fits files found.")
+    description = fill("Shows HDU info for the FITS files found.")
     
-    options = [ "i", "o", "skw" ]
+    options = [ "i", "ol", "skw" ]
     
     def do(self):
         """Do the work"""
@@ -518,7 +593,7 @@ class FITSShow(FITSCLI):
         if self.opts.output is False:
             self.opts.output = None
         [ pf.info(header["OPENNAME"], self.opts.output) for header in data ]
-                
+
 
 class FITSGroup(FITSCLI):
     """Create a list of groups from FITS header attributes."""
@@ -528,9 +603,9 @@ class FITSGroup(FITSCLI):
     help = "Make a list of groups for a collection of FITS files."
     
     description = fill("Creates a text table with the requested header information grouped for a bunch of FITS files. Groups are collections of files which have identical header values. Files can be filtered before grouping using the 'KEYWORD=value' search syntax.")
-        
-    options = [ "i", "skw" ]        
-        
+    
+    options = [ "i", "skw" ]
+    
     def do(self):
         """Make the log table"""
         files = self.get_files()
@@ -546,12 +621,12 @@ class FITSLog(FITSCLI):
     
     command = 'log'
     
-    options = [ "i", "o", "skw" ]
+    options = [ "i", "ol", "skw" ]
     
     help = "Make a log file for a collection of FITS files."
     
     description = fill("Creates a text table with the requested header information for a bunch of FITS files.")
-        
+    
     def do(self):
         """Make the log table"""
         from pyshell.util import check_exists
@@ -563,50 +638,88 @@ class FITSLog(FITSCLI):
         
         print("Will log %d files." % len(files))
         data = FITSHeaderTable.fromfiles(files).search(**search).normalize(search.keys())
-        output = data.log(order=search.keys())
-        if self.opts.output:
-            with open(self.opts.output,'w') as outputfile:
-                outputfile.write("\n".join(output))
-        else:
-            print("\n".join(output))
-            print("%d files found." % len(data))
-        
+        table = data.log(order=search.keys())
+        self.output_table(table)
         
     
     
+
 class FITSList(FITSCLI):
     """Make a list of files with certain header attributes"""
     
     command = "list"
     
-    options = [ "i", "skw" ]
+    options = [ "i", "skw", "oil" ]
     
     help = "Make a list of FITS files that match criteria."
     
     description = "Make a list of FITS files that match given criteria using direct matching, substring matching, or regular expressions."
     
-    def after_configure(self):
-        super(FITSList, self).after_configure()
-        self.parser.add_argument('-o','--output',action='store',
-            default=self.config.get("Defaults.List.Name",False),help="Output list file name.",metavar="files.list")
-        self.parser.add_argument('-l','--log',action='store_true',
-            help="Store a full log file, not just a list of files that match this keyword.")
-        
-            
     def do(self):
         """Run the search itself"""
         search = self.get_keywords()
         files = self.get_files()
         print("Searching %d files." % len(files))
         data = FITSHeaderTable.fromfiles(files).normalize(search.keys()).search(**search)
-        output = data.log(order=search.keys())
-        print("\n".join(output))
-        print("%d files found." % len(output))
+        table = data.log(order=search.keys())
+        self.output_table(table)
         
-        if self.opts.output:
-            if not self.opts.log:
-                output = data.files
-            with open(self.opts.output,'w') as fnamelist:
-                fnamelist.write("\n".join(output))
-            print("Wrote file %s to '%s'" % ("log" if self.opts.log else "list",self.opts.output))
+
+class FITSInspect(FITSCLI):
+    """Inspect FITS files and create a list of only the approved files."""
+    
+    command = "inspect"
+    
+    options = [ "i", "skw", "oil" ]
+    
+    help = "Make a list of FITS files that match critera, inspecting each one in ds9."
+    
+    description = "Works just like the 'list' command, except that  each item to be added to the list is shown in DS9, and then can be approved/removed."
+    
+    def do(self):
+        """Inspect files!"""
+        search = self.get_keywords()
+        files = self.get_files()
+        print("Searching {:d} files".format(len(files)))
+        data = FITSHeaderTable.fromfiles(files).normalize(search.keys()).search(**search)
+        print("Inspecting {:d} files".format(len(data)))
         
+        self.log.info("Command: {:s} {:s}".format(sys.argv[0],self.command))
+        self.log.info("Inspecting {:d} of {:d} files.")
+        
+        print("Launching ds9")
+        self.ds9 = self.get_ds9()
+        use_files = []
+        kept, discard = 0, 0
+        for filename in data.files:
+            basename = os.path.basename(filename)
+            if not check_exists(filename):
+                print("Input File '{:s}' does not exist! Discarding...".format(filename))
+                self.log.info("Discarding '{:s}', it does not exist.".format(filename))
+                discard += 1
+                continue
+            self.ds9inspect(filename)
+            if query_yes_no("'{}' is good?".format(basename),default="yes"):
+                self.log.info("Keeping '{:s}'.")
+                use_files.append(filename)
+                kept += 1
+            else:
+                self.log.info("Discarding '{:s}'.")
+                discard += 1
+        
+        print("Kept {:d} files out of {:d} original files".format(kept,kept+discard))
+        self.log.info("Kept {:d} files out of {:d} original files".format(kept,kept+discard))
+        
+        inspected_data = FITSHeaderTable.fromfiles(use_files)
+        
+        self.output_table(inspected_data.log(order=search.keys()))
+    
+    
+    def ds9inspect(self, filename):
+        """Inspect the file in ds9"""
+        self.ds9.set("file {:s}".format(filename))
+        self.ds9.set('zoom to fit')
+        self.ds9.set('scale log')
+        self.ds9.set('cmap sls')
+    
+    
