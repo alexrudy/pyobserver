@@ -7,7 +7,13 @@
 #  Created by Jaberwocky on 2013-02-11.
 #  Copyright 2013 Jaberwocky. All rights reserved.
 # 
+"""
+:mod:`starlist` - Conversion from Starlist to region and back!
+==============================================================
 
+This module implements the :program:`PO slds9` command.
+
+"""
 from pyshell.subcommand import SCEngine
 
 from datetime import date, datetime

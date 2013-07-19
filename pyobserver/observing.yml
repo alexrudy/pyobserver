@@ -10,4 +10,6 @@ Image:
 BackUp:
   modes:
     all: {}
-  
+UI:
+  Table:
+    more: false

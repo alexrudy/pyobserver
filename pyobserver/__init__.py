@@ -7,4 +7,4 @@
 #  Copyright 2013 Jaberwocky. All rights reserved.
 # 
 
-version = "0.0.2"
+version = "0.2.0"
