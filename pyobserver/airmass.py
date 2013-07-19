@@ -26,26 +26,14 @@ class AirmassChart(SCEngine):
         self.parser.add_argument('--plot',help="make airmass plot",action='store',default="airmass.pdf")
         self.parser.add_argument('--date',help="set airmass date",action='store',default="<<TODAY>>",metavar="YYYY/MM/DD")
         
-    def start(self):
-        """Set up all of the details for the airmass plot."""
+    def do(self):
+        """Make the airmass plot"""
+        self.targets = parse_starlist(self.opts.starlist)
         if self.opts.date == "<<TODAY>>":
             self.date = date.today()
         else:
             self.date = datetime.strptime(self.opts.date,"%Y/%m/%d")
-        filename,ext = os.path.splitext(self.opts.plot)
-        self.filename = filename + self.date.strftime("%Y-%m-%d") + ext
-        from . import observer
-        self.site = observer.Observer(self.config.get("Site"))
         
-    def do(self):
-        """Make the airmass plot"""
-        from . import observer
-        self.targets = parse_starlist(self.opts.starlist)
-        for star in self.targets:
-            star["target"] = self.site.target(star["name"],star["ra"],star["dec"],star["epoch"])
-        self.site.almanac(self.date.strftime("%Y/%m/%d"))
-        self.site.airmass(*tuple([ star["target"] for star in self.targets ]))
-        observer.plots.plot_airmass(self.site,self.filename,**self.pltparams)
         
     def end(self):
         """docstring for end"""

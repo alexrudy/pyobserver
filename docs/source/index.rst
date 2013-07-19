@@ -5,20 +5,19 @@
 
 .. currentmodule:: pyobserver
 
-Welcome to PyObserver's documentation!
-======================================
+.. include:: ../../README.rst
 
-PyObserver is a tool for dealing with many FITS files, and for handling common observational astronomy tasks. Its primary tools are a system for grouping FITSFiles, and a system for manipulating simple starlists.
+PyObserver's documentation!
+===========================
 
-To install PyObserver, get the source tree, and then use::
-    $ pip install .
-
+The :mod:`pyobserver` module primarily provides the command :program:`PO`. As well, classes for managing groups of FITS files and for parsing and understanding Starlists are included.
 
 Contents:
 
 .. toctree::
    :maxdepth: 2
    
+   pocommand
    fitsfiles
    starlist
 
