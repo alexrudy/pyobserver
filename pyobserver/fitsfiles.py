@@ -369,8 +369,8 @@ class FITSDataGroups(collections.MutableSet):
         :return: The hash string for the new group.
         
         """
-        listgroup = ListFITSDataGroup(filename,self.keywords,self.formats)
-        if len(headers) > 0 and not self.hasgroup(*listgroup):
+        listgroup = ListFITSDataGroup(filename, self.keywords, self.formats)
+        if len(listgroup) > 0 and not self.hasgroup(*listgroup):
             self.add(listgroup)
         
         
@@ -508,14 +508,12 @@ class FITSDataGroups(collections.MutableSet):
         
         """
         from astropy.table import Table, Column
-        
-        if not (filter_homogenous or self.homogenous):
-            raise ValueError("Cannot create a Table Object from a non-homogenous set of groups.")
-        
+                
         if filter_homogenous:
-            groups = [ group for group in self if not isinstance(group,ListFITSDataGroup) ]
+            groups = [ group for group in self if not isinstance(group, ListFITSDataGroup) ]
         else:
-            groups = [ group for group in self ]
+            groups = [ group for group in self if not isinstance(group, ListFITSDataGroup) ]
+            list_groups = [ group for group in self if isinstance(group, ListFITSDataGroup) ]
             
         groups.sort(key=lambda g : g.name)
         
@@ -526,6 +524,9 @@ class FITSDataGroups(collections.MutableSet):
         
         number_column = Column(name=str("N"), data=[ len(group) for group in groups ])
         result.add_column(number_column)
+        
+        for lgroup in list_groups:
+            result.add_row({"Name":lgroup.name, "N":len(lgroup)})
         
         return result
         
@@ -598,8 +599,9 @@ class ListFITSDataGroup(FITSDataGroup):
     :param 
     
     """
-    def __init__(self,listfile,keywords,formats):
+    def __init__(self, listfile, keywords, formats):
         super(ListFITSDataGroup, self).__init__(header=None,keyhash=listfile,keywords=keywords,formats=formats)
+        del self[0]
         self.read(readfilelist(listfile))
         self._list = listfile
     
@@ -687,10 +689,10 @@ class FITSCLI(SCEngine):
                 infiles = shlex.split(_input)
                 for infile in infiles:
                     files += glob.glob(infile)
-        for file in files:
-            warn_exists(file,"FITS File",True)
+        for _file in files:
+            warn_exists(_file, "FITS File", True)
         
-        if getattr(self.opts,'single',False):
+        if getattr(self.opts, 'single', False):
             files = [files[0]]
         
         return files
@@ -729,7 +731,14 @@ class FITSCLI(SCEngine):
         return ds9
     
     def output_table(self, table, more=None, less=None, verb="found"):
-        """Output a table to the command line."""
+        """Output a table to the command line.
+        
+        :param table: The astropy.table.Table
+        :param bool more: Whether to use Table.more() for streming output.
+        :param bool less: Whether to stream to the unix ``less`` command.
+        :param string verb: The verb to use for end-user output.
+        
+        """
         if more is None:
             more = self.config.get("UI.Table.more", False)
         if less is None:
@@ -747,22 +756,21 @@ class FITSCLI(SCEngine):
         if output:
             table.write(output, format=_format, bookend=False, delimiter=None, include_names=include)
             print("Wrote file {:s} to '{:s}'".format("log" if log else "list", output))
-        
-        if less:
+        elif less:
             from .util import stream_less
             writer = lambda stream : table.write(stream, format=_format, bookend=False, delimiter=None, include_names=include)
             stream_less(writer)
+            print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
         elif more:
             if not log:
                 table[ table.colnames[0] ].more()
             else:
                 table.more()
             print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
-        
         elif not output:
             table.write(sys.stdout, format=_format, bookend=False, delimiter=None, include_names=include)
             print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
-    
+        
 
 
 class FITSInfo(FITSCLI):
@@ -802,13 +810,25 @@ class FITSGroup(FITSCLI):
         """docstring for after_configure"""
         super(FITSGroup, self).after_configure()
         self.opts.log = True
+        self.parser.add_argument('--list', help="Collect list names for addition to the grouping.", nargs="+", default=[])
     
     def do(self):
         """Make the log table"""
         files = self.get_files()
         search = self.get_keywords()
+        
+        if not isinstance(self.opts.list,list):
+            olists = [ self.opts.list ]
+        else:
+            olists = self.opts.list
+        lists = []
+        for _list in olists:
+            lists += glob.glob(_list)
+        
+        
         print("Will group %d files." % len(files))
         data = FITSHeaderTable.fromfiles(files).search(**search).group(search.keys())
+        [ data.addlist(_list) for _list in lists ]
         table = data.table()
         self.output_table(table, verb="grouped")
 
