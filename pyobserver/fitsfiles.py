@@ -782,7 +782,7 @@ class FITSInfo(FITSCLI):
     
     description = fill("Shows HDU info for the FITS files found.")
     
-    options = [ "i", "ol", "skw" ]
+    options = [ "i", "ol", "skw", "s" ]
     
     def do(self):
         """Do the work"""
@@ -793,6 +793,31 @@ class FITSInfo(FITSCLI):
         if self.opts.output is False:
             self.opts.output = None
         [ pf.info(header["OPENNAME"], self.opts.output) for header in data ]
+
+
+class FITSHead(FITSCLI):
+    """Show a FITS header"""
+    
+    command = 'head'
+    
+    help = "Show the headers of a bunch of FITS files."
+    
+    description = fill("Shows FITS headers for found FITS files.")
+    
+    options = [ "i", "skw", "s" ]
+    
+    def do(self):
+        """Do the work!"""
+        from .util import stream_less
+        files = self.get_files()
+        search = self.get_keywords()
+        data = FITSHeaderTable.fromfiles(files).search(**search)
+        print("Will show header for %d files." % len(data))
+        for header in data:
+            write = lambda stream : stream.write(str(header))
+            stream_less(write)
+        print("Examined {:d} headers.".format(len(data)))
+    
 
 
 class FITSGroup(FITSCLI):
