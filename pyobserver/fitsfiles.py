@@ -814,7 +814,7 @@ class FITSHead(FITSCLI):
         data = FITSHeaderTable.fromfiles(files).search(**search)
         print("Will show header for %d files." % len(data))
         for header in data:
-            write = lambda stream : stream.write(str(header))
+            write = lambda stream : stream.write(repr(header))
             stream_less(write)
         print("Examined {:d} headers.".format(len(data)))
     
