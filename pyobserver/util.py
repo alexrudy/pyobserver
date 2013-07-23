@@ -28,3 +28,20 @@ def parse_starlist(starlist):
                 d[key] = value
         output.append(d)
     return output
+    
+def stream_less(infunc):
+    """Launch the terminal command `less` using an input stream."""
+    import subprocess, sys
+    
+    args = ['less','-e']
+    
+    less = subprocess.Popen(args,stdin=subprocess.PIPE)
+    try:
+        infunc(less.stdin)
+        less.stdin.flush()
+        less.stdin = sys.stdin
+        less.wait()
+    except IOError:
+        less.terminate()
+        raise
+    

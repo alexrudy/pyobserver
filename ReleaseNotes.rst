@@ -1,6 +1,12 @@
 Release Notes for PyObserver
 ============================
 
+0.2.1
+-----
+
+- A new ``PO head`` command
+- A streaming ``less`` interface for paged tables / headers.
+
 0.2.0
 -----
 - A new ``PO inspect`` command is available for inspecting each image in DS9.

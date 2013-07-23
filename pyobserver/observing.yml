@@ -1,6 +1,10 @@
 Defaults:
   Starlist: starlist.txt
   Region: starlist.reg
+  Files:
+    Input: "*.fits"
+    OutputLog: false
+    OutputList: false
 Region:
   CoordinateSystem: fk5
   Radius: 2"
@@ -13,3 +17,4 @@ BackUp:
 UI:
   Table:
     more: false
+    less: true

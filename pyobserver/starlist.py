@@ -44,6 +44,7 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
     
     def before_configure(self):
         """Check for pyregion"""
+        super(StarlistToRegion, self).before_configure()
         try:
             import pyregion
         except ImportError:

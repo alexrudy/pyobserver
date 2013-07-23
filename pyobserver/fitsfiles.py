@@ -41,7 +41,13 @@ Groups created automatically by :class:`FITSDataGroups` will all be *Homogenous 
 
 Non-Homogenous Groups
 *********************
-Groups can also include non-homogenous groups.
+Groups can also include non-homogenous groups, which are generally lists of files that are joined.
+
+.. autoclass:: ListFITSDataGroup
+    :members:
+    :inherited-members:
+    
+
 
 """
 from __future__ import (absolute_import, unicode_literals, division,
@@ -227,7 +233,7 @@ class FITSHeaderTable(list):
                 results.append(header)
         return results
     
-    def group(self,keywords,key_fmt=None):
+    def group(self, keywords, key_fmt=None):
         """Using a list of keywords, collect groups of headers for which the value of each specified keyword matches among the whole group. This is done using a :class:`FITSDataGroups` object, and such an object is returned. :class:`FITSDataGroups` objects behave like sets, and so can be iterated over. To access individual elements, use the :meth:`FITSDataGroups.get` method.
         
         :param list keywords: This should be a list of keywords which will be used to group the FITS headers.
@@ -237,19 +243,18 @@ class FITSHeaderTable(list):
         """
         if key_fmt is None:
             key_fmt = []
-        self.groups = FITSDataGroups(keys,key_fmt)
+        self.groups = FITSDataGroups(keywords,key_fmt)
         for header in self:
             self.groups.add(header)
         return self.groups
     
-    def log(self, order=None):
+    def table(self, order=None):
         """Create a log-file like list of strings from a collection.
         
         :param collection: The collection to use. If ``None``, use the current internal collection.
         
         """
         from astropy.table import Table
-        import cStringIO as io
         
         if order is None:
             order = self[0].keys()
@@ -270,13 +275,6 @@ class FITSHeaderTable(list):
         data_list = [ [ header[key] for header in self ] for key in key_list ]
         
         table = Table(data_list, names = header_list)
-        # header_data = dict(zip(key_list,header_list))
-        #
-        # # Format string ready for formatting
-        # column_keywords = column_line.format(*key_list)
-        #
-        # output = [ column_keywords.format(**header_data) ]
-        # output += [ column_keywords.format(**header) for header in self ]
         return table
 
 class FITSDataGroups(collections.MutableSet):
@@ -293,8 +291,9 @@ class FITSDataGroups(collections.MutableSet):
     
     EMPTYFORMAT = "{!s}"
     
-    def __init__(self,keywords,formats="{!s}"):
+    def __init__(self, keywords, formats="{!s}", md5=False):
         super(FITSDataGroups, self).__init__()
+        self._md5 = md5
         self._groups = {}
         self._keywords = keywords
         if isinstance(formats,list):
@@ -328,7 +327,7 @@ class FITSDataGroups(collections.MutableSet):
         string groupname
         string filename
         """
-        hhash = self.type_to_hash(item)
+        hhash = self._make_hash(item)
         if hhash not in self.hashes:
             return hhash in [group.name for group in self]
         else:
@@ -370,8 +369,8 @@ class FITSDataGroups(collections.MutableSet):
         :return: The hash string for the new group.
         
         """
-        listgroup = ListFITSDataGroup(filename,self.keywords,self.formats)
-        if len(headers) > 0 and not self.hasgroup(*listgroup):
+        listgroup = ListFITSDataGroup(filename, self.keywords, self.formats)
+        if len(listgroup) > 0 and not self.hasgroup(*listgroup):
             self.add(listgroup)
         
         
@@ -385,9 +384,9 @@ class FITSDataGroups(collections.MutableSet):
         """
         headers = list(headers)
         header = headers.pop()
-        masterhash = self.make_hash(header)
+        masterhash = self._build_hash(header)
         for header in headers:
-            if self.make_hash(header) != masterhash:
+            if self._build_hash(header) != masterhash:
                 return False
         return True
     
@@ -399,7 +398,7 @@ class FITSDataGroups(collections.MutableSet):
         
         """
         if self.isgroup(*headers):
-            khash = self.make_hash(headers[0])
+            khash = self._build_hash(headers[0])
             if khash in self:
                 incfiles = self.get(khash).files
                 incfiles.sort()
@@ -414,7 +413,7 @@ class FITSDataGroups(collections.MutableSet):
         :param item: Any item which can be made into a group hash. (see :meth:`add`)
         
         """
-        khash = self.type_to_hash(item)
+        khash = self._make_hash(item)
         return isinstance(self._groups[khash],ListFITSDataGroup)
     
     def addmany(self,*items):
@@ -447,14 +446,14 @@ class FITSDataGroups(collections.MutableSet):
                 return item.keyhash
             else:
                 raise KeyError("DataGroup with hash {} already exists.".format(item.keyhash))
-        hhash = self.type_to_hash(item)
+        hhash = self._make_hash(item)
         if item not in self:
             self._groups[hhash] = FITSDataGroup(item, hhash, self.keywords, self.formats)
         else:
             self._groups[hhash].append(item)
         return hhash
     
-    def type_to_hash(self,item):
+    def _make_hash(self, item):
         """Convert an item into a hash for this object. This method is mostly used internally, but can be used to get the hash of any item as it would be constructed by this grouping.
         
         :param item: An item to convert to a hash.
@@ -471,21 +470,27 @@ class FITSDataGroups(collections.MutableSet):
         if isinstance(item,basestring) and check_exists(item) and item.endswith(".fits"):
             item = silent_getheader(item)
         if isinstance(item,pf.header.Header) or isinstance(item,collections.Mapping):
-            hhash = self.make_hash(item)
+            hhash = self._build_hash(item)
         elif isinstance(item,basestring):
             hhash = unicode(item)
         else:
             raise TypeError("Can't convert {} to Header Hash".format(type(item)))
         return hhash
     
-    def make_hash(self,dictionary):
+    def _build_hash(self, dictionary):
         """Make the appropriate keyword hash for a given dictionary.
         
         :param dictionary: Any mapping with the correct keyword set that can be used to construct a hash.
         :return: The hash.
         
         """
-        return unicode("".join([ unicode(key)+u"="+unicode(dictionary[key]) for key in self.keywords ]))
+        value = unicode("".join([ unicode(key)+u"="+unicode(dictionary[key]) for key in self.keywords ]))
+        if self._md5:
+            import hashlib
+            hashcontainer = hashlib.md5()
+            hashcontainer.update(value)
+            value = hashcontainer.hexdigest()
+        return value
     
     def discard(self,item):
         """Discard a group from this group set.
@@ -493,16 +498,37 @@ class FITSDataGroups(collections.MutableSet):
         :param item: Any item which can be used to look up a group.
         
         """
-        hhash = self.type_to_hash(item)
+        hhash = self._make_hash(item)
         del self._groups[hhash]
     
-    def table(self):
+    def table(self, filter_homogenous=False):
         """Return a text table for this datagroup. See :meth:`output`.
         
         .. note:: This method currently returns a list of strings. In the future, it will return an :class:`astropy.table.Table` object containing only the desired header keywords.
         
         """
-        return self.output()
+        from astropy.table import Table, Column
+                
+        if filter_homogenous:
+            groups = [ group for group in self if not isinstance(group, ListFITSDataGroup) ]
+        else:
+            groups = [ group for group in self if not isinstance(group, ListFITSDataGroup) ]
+            list_groups = [ group for group in self if isinstance(group, ListFITSDataGroup) ]
+            
+        groups.sort(key=lambda g : g.name)
+        
+        result = Table([ group.keylist for group in groups ], names=map(str,self.keywords))
+        
+        name_column = Column(name=str("Name"), data=[ group.name for group in groups ])
+        result.add_column(name_column, index=0)
+        
+        number_column = Column(name=str("N"), data=[ len(group) for group in groups ])
+        result.add_column(number_column)
+        
+        for lgroup in list_groups:
+            result.add_row({"Name":lgroup.name, "N":len(lgroup)})
+        
+        return result
         
     def output(self):
         """Get a list of ASCII strings which represent all the groups in this object.
@@ -520,7 +546,7 @@ class FITSDataGroups(collections.MutableSet):
         output = [head,"-"*(len(head))]
         for keyhash in hashes:
             if self.islist(keyhash):
-                output += [txt_row.format(keyhash,len(self.get(keyhash)))]
+                output += [ txt_row.format( keyhash, len(self.get(keyhash))) ]
             else:
                 rowtuple = [self.get(keyhash).name]
                 for keyword in self.keywords:
@@ -573,8 +599,9 @@ class ListFITSDataGroup(FITSDataGroup):
     :param 
     
     """
-    def __init__(self,listfile,keywords,formats):
+    def __init__(self, listfile, keywords, formats):
         super(ListFITSDataGroup, self).__init__(header=None,keyhash=listfile,keywords=keywords,formats=formats)
+        del self[0]
         self.read(readfilelist(listfile))
         self._list = listfile
     
@@ -608,23 +635,24 @@ class FITSCLI(SCEngine):
     def after_configure(self):
         """Configure the logging"""
         super(FITSCLI, self).after_configure()
-        
         # Input settings
         if "i" in self.options:
             self.parser.add_argument('-i','--input',help="Either a glob or a list contianing the files to use.",
-                action='store',nargs="+",type=unicode,default=unicode(self.config.get("Defaults.Log.Glob","*.fits")))
-        else:
-            self.opts.input = False
+                action='store',nargs="+",type=unicode,default=unicode(self.config.get("Defaults.Files.Input","*.fits")))
+        
+        if "s" in self.options:
+            self.parser.add_argument('-s','--single',help="Use only the first found file.",
+                action='store_true')
         
         # Output settings:
         if "ol" in self.options:
             self.parser.add_argument('-o','--output',help="Output file name",
-                default=self.config.get("Defaults.Log.OutputName",False),action='store',dest='output')
+                default=self.config.get("Defaults.Files.OutputLog",False),action='store',dest='output')
             self.opts.log = True
         
         if "oi" in self.options or "oil" in self.options:
             self.parser.add_argument('-o','--output',action='store',
-                default=self.config.get("Defaults.List.Name",False),help="Output list file name.",metavar="files.list")
+                default=self.config.get("Defaults.Files.OutputList",False),help="Output list file name.",metavar="files.list")
         
         if "oil" in self.options:
             self.parser.add_argument('-l','--log',action='store_true',
@@ -647,15 +675,26 @@ class FITSCLI(SCEngine):
     def get_files(self):
         """Get the list of files used by the -i command line argument."""
         from pyshell.util import check_exists, warn_exists
-        if check_exists(self.opts.input):
-            files = readfilelist(self.opts.input)
+        if not hasattr(self.opts,'input'):
+            raise AttributeError("Missing input option!")
+        if not isinstance(self.opts.input,list):
+            inputs = [ self.opts.input ]
         else:
-            infiles = shlex.split(self.opts.input)
-            files = []
-            for infile in infiles:
-                files += glob.glob(infile)
-        for file in files:
-            warn_exists(file,"FITS File",True)
+            inputs = self.opts.input
+        files = []
+        for _input in inputs:
+            if check_exists(_input) and not (_input.endswith(".fit") or _input.endswith(".fits") or _input.endswith("fits.gz")):
+                files += readfilelist(_input)
+            else:
+                infiles = shlex.split(_input)
+                for infile in infiles:
+                    files += glob.glob(infile)
+        for _file in files:
+            warn_exists(_file, "FITS File", True)
+        
+        if getattr(self.opts, 'single', False):
+            files = [files[0]]
+        
         return files
     
     def get_keywords(self):
@@ -691,33 +730,47 @@ class FITSCLI(SCEngine):
             raise
         return ds9
     
-    def output_table(self, table, more=None):
-        """Output a table to the command line."""
-        if more is None:
-            more = self.config.get("UI.Table.more",False)
+    def output_table(self, table, more=None, less=None, verb="found"):
+        """Output a table to the command line.
         
-        if not self.opts.log:
-            include = ['file']
+        :param table: The astropy.table.Table
+        :param bool more: Whether to use Table.more() for streming output.
+        :param bool less: Whether to stream to the unix ``less`` command.
+        :param string verb: The verb to use for end-user output.
+        
+        """
+        if more is None:
+            more = self.config.get("UI.Table.more", False)
+        if less is None:
+            less = self.config.get("UI.Table.less", False)
+        log = getattr(self.opts,'log',False)
+        output = getattr(self.opts,'output',False)
+        
+        if not log:
+            include = table.colnames[0]
             _format = 'ascii.fixed_width_no_header'
         else:
             include = table.colnames
             _format = 'ascii.fixed_width'
         
-        if self.opts.output:
-            table.write(self.opts.output, format=_format, bookend=False, delimiter=None, include_names = include)
-            print("Wrote file {:s} to '{:s}'".format("log" if self.opts.log else "list",self.opts.output))
-        
-        if more:
-            if not self.opts.log:
-                table['file'].more()
+        if output:
+            table.write(output, format=_format, bookend=False, delimiter=None, include_names=include)
+            print("Wrote file {:s} to '{:s}'".format("log" if log else "list", output))
+        elif less:
+            from .util import stream_less
+            writer = lambda stream : table.write(stream, format=_format, bookend=False, delimiter=None, include_names=include)
+            stream_less(writer)
+            print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
+        elif more:
+            if not log:
+                table[ table.colnames[0] ].more()
             else:
                 table.more()
-            print("%d files found." % len(table))
+            print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
+        elif not output:
+            table.write(sys.stdout, format=_format, bookend=False, delimiter=None, include_names=include)
+            print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
         
-        elif not self.opts.output:
-            table.write(sys.stdout, format=_format, bookend=False, delimiter=None, include_names = include)
-            print("%d files found." % len(table))
-    
 
 
 class FITSInfo(FITSCLI):
@@ -729,7 +782,7 @@ class FITSInfo(FITSCLI):
     
     description = fill("Shows HDU info for the FITS files found.")
     
-    options = [ "i", "ol", "skw" ]
+    options = [ "i", "ol", "skw", "s" ]
     
     def do(self):
         """Do the work"""
@@ -740,6 +793,31 @@ class FITSInfo(FITSCLI):
         if self.opts.output is False:
             self.opts.output = None
         [ pf.info(header["OPENNAME"], self.opts.output) for header in data ]
+
+
+class FITSHead(FITSCLI):
+    """Show a FITS header"""
+    
+    command = 'head'
+    
+    help = "Show the headers of a bunch of FITS files."
+    
+    description = fill("Shows FITS headers for found FITS files.")
+    
+    options = [ "i", "skw", "s" ]
+    
+    def do(self):
+        """Do the work!"""
+        from .util import stream_less
+        files = self.get_files()
+        search = self.get_keywords()
+        data = FITSHeaderTable.fromfiles(files).search(**search)
+        print("Will show header for %d files." % len(data))
+        for header in data:
+            write = lambda stream : stream.write(repr(header))
+            stream_less(write)
+        print("Examined {:d} headers.".format(len(data)))
+    
 
 
 class FITSGroup(FITSCLI):
@@ -753,15 +831,31 @@ class FITSGroup(FITSCLI):
     
     options = [ "i", "skw" ]
     
+    def after_configure(self):
+        """docstring for after_configure"""
+        super(FITSGroup, self).after_configure()
+        self.opts.log = True
+        self.parser.add_argument('--list', help="Collect list names for addition to the grouping.", nargs="+", default=[])
+    
     def do(self):
         """Make the log table"""
         files = self.get_files()
         search = self.get_keywords()
+        
+        if not isinstance(self.opts.list,list):
+            olists = [ self.opts.list ]
+        else:
+            olists = self.opts.list
+        lists = []
+        for _list in olists:
+            lists += glob.glob(_list)
+        
+        
         print("Will group %d files." % len(files))
         data = FITSHeaderTable.fromfiles(files).search(**search).group(search.keys())
-        output = data.table()
-        print("\n".join(output))
-        print("%d files grouped." % len(data))
+        [ data.addlist(_list) for _list in lists ]
+        table = data.table()
+        self.output_table(table, verb="grouped")
 
 class FITSLog(FITSCLI):
     """Create a log from FITS header attributes."""
@@ -785,7 +879,7 @@ class FITSLog(FITSCLI):
         
         print("Will log %d files." % len(files))
         data = FITSHeaderTable.fromfiles(files).search(**search).normalize(search.keys())
-        table = data.log(order=search.keys())
+        table = data.table(order=search.keys())
         self.output_table(table)
         
     
@@ -808,7 +902,7 @@ class FITSList(FITSCLI):
         files = self.get_files()
         print("Searching %d files." % len(files))
         data = FITSHeaderTable.fromfiles(files).normalize(search.keys()).search(**search)
-        table = data.log(order=search.keys())
+        table = data.table(order=search.keys())
         self.output_table(table)
         
 
@@ -847,11 +941,11 @@ class FITSInspect(FITSCLI):
                 continue
             self.ds9inspect(filename)
             if query_yes_no("'{}' is good?".format(basename),default="yes"):
-                self.log.info("Keeping '{:s}'.")
+                self.log.info("Keeping '{:s}'.".format(basename))
                 use_files.append(filename)
                 kept += 1
             else:
-                self.log.info("Discarding '{:s}'.")
+                self.log.info("Discarding '{:s}'.".format(basename))
                 discard += 1
         
         print("Kept {:d} files out of {:d} original files".format(kept,kept+discard))
@@ -859,7 +953,7 @@ class FITSInspect(FITSCLI):
         
         inspected_data = FITSHeaderTable.fromfiles(use_files)
         
-        self.output_table(inspected_data.log(order=search.keys()))
+        self.output_table(inspected_data.table(order=search.keys()))
     
     
     def ds9inspect(self, filename):

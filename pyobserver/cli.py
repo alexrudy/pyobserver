@@ -8,7 +8,7 @@
 # 
 
 from pyshell.subcommand import SCController
-from .fitsfiles import FITSGroup, FITSLog, FITSList, FITSInfo, FITSInspect
+from .fitsfiles import FITSGroup, FITSLog, FITSList, FITSInfo, FITSInspect, FITSHead
 from .starlist import StarlistToRegion
 
 class POcommand(SCController):
@@ -25,5 +25,6 @@ class POcommand(SCController):
         FITSList,
         FITSInfo,
         FITSInspect,
+        FITSHead,
         StarlistToRegion,
     ]
