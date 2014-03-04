@@ -25,9 +25,10 @@ setup(
         'six==1.5.2',
         'pyds9==1.6',
         'pyshell>=0.3.0',
+        'pyephem>=3.7.2.2',
     ],
     dependency_links = [
-        'http://hea-www.harvard.edu/RD/download/pyds9/pyds9-1.6.tar.gz#egg=pyds9',
+        'http://hea-www.harvard.edu/RD/download/pyds9/pyds9-1.6.tar.gz#egg=pyds9==1.6',
         'git+https://github.com/alexrudy/pyshell.git@develop#egg=pyshell',
     ],
     entry_points = {
