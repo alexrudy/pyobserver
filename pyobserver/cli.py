@@ -28,7 +28,7 @@ from astropy.coordinates import ICRS
 import astropy.units as u
 from astropy.io import fits
 
-from .fitsfiles import FITSHeaderTable, readfilelist
+from .fits.core import FITSHeaderTable, readfilelist
 from .starlist import StarlistToRegion
 
 class FITSCLI(SCEngine):
