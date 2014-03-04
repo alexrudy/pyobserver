@@ -16,10 +16,12 @@ import astropy.units as u
 from astropy.coordinates import ICRS, FK5, AltAz
 from astropy.time import Time
 
-from .types import convert, ComputeConverter, WrappedUnitAttribute, CelciusAttribute
+from .types import convert, AttributeConverter, WrappedUnitAttribute, CelciusAttribute
 
-class Observer(ComputeConverter, ephem.Observer):
+class Observer(AttributeConverter):
     """Make an observer."""
+    
+    __wrapped_class__ = ephem.Observer
     
     def __init__(self, **kwargs):
         super(Observer, self).__init__()

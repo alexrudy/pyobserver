@@ -22,6 +22,7 @@ import ephem
 import functools
 import six
 import inspect
+import abc
 
 from pyshell.util import descriptor__get__
 
@@ -75,6 +76,10 @@ def convert_astropy_to_ephem_weak(obj):
     obj_type = astropy_or_ephem(obj)
     if obj_type == "astropy":
         return convert_astropy_to_ephem(obj)
+    elif isinstance(obj, AttributeConverter):
+        return obj.__wrapped_instance__
+    elif inspect.isclass(obj) and issubclass(obj, AttributeConverter):
+        return obj.__wrapped_class__
     else:
         return obj
     
@@ -133,8 +138,16 @@ register_transformation(*_angle_tuples(astropy.coordinates.Longitude, reverse=Fa
 register_transformation(*_angle_tuples(astropy.coordinates.Angle))
 # Mixin Class
 
+@six.add_metaclass(abc.ABCMeta)
 class AttributeConverter(object):
     """Converts attributes"""
+    
+    __wrapped_class__ = None
+    
+    def __init__(self, *args, **kwargs):
+        """Initialize this instance."""
+        super(AttributeConverter, self).__init__(*args, **kwargs)
+        self.__dict__['__wrapped_instance__'] = self.__wrapped_class__(*args, **kwargs)
     
     @staticmethod
     def decorate_attribute_convert(f):
@@ -146,31 +159,26 @@ class AttributeConverter(object):
             return convert_ephem_to_astropy_weak(f(*e_args, **e_kwargs))
         return wrap_convert
         
-    
-    def __getattribute__(self, attribute_name):
+    def __getattr__(self, attribute_name):
         """Manipulate attribute access to use :mod:`astropy` objects."""
-        attribute = super(AttributeConverter, self).__getattribute__(attribute_name)
-        if inspect.ismethod(attribute) and six.get_method_self(attribute) == self:
+        attribute = getattr(self.__wrapped_instance__, attribute_name)
+        if six.callable(attribute) and isinstance(attribute.__self__, self.__wrapped_class__):
             return self.decorate_attribute_convert(attribute)
         return convert_ephem_to_astropy_weak(attribute)
         
     def __setattr__(self, attribute_name, value):
         """Set attributes, with type conversion."""
-        value = convert_astropy_to_ephem_weak(value)
+        if (not attribute_name.startswith("__")) and hasattr(self.__wrapped_instance__, attribute_name):
+            value = convert_astropy_to_ephem_weak(value)
+            return setattr(self.__wrapped_instance__, attribute_name, value)
         return super(AttributeConverter, self).__setattr__(attribute_name, value)
-        
-class ComputeConverter(AttributeConverter):
-    """Handles objects that have a :mod:`ephem` .compute() method"""
     
-    def compute(self, date_or_observer, epoch=None):
-        """Compute given a date or observer."""
-        epoch = convert_astropy_to_ephem_weak(epoch)
-        date_or_observer = convert_astropy_to_ephem_weak(date_or_observer)
-        if epoch is None:
-            return super(ComputeConverter, self).compute(date_or_observer)
-        else:
-            return super(ComputeConverter, self).compute(date_or_observer, epoch)
-        
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls.__wrapped_class__ is not None:
+            if issubclass(C, cls.__wrapped_class__):
+                return True
+        return NotImplemented
 
 class WrappedUnitAttribute(object):
     """A descriptor which wraps an ephem attribute, giving it astropy units.."""
@@ -181,12 +189,12 @@ class WrappedUnitAttribute(object):
         
     def __set__(self, obj, value):
         """Set named the attribute"""
-        getattr(super(obj.__class__, obj.__class__), self.name).__set__(obj, u.Quantity(value, self.unit).value)
+        setattr(obj.__wrapped_instance__, self.name, u.Quantity(value, self.unit).value)
         
     @descriptor__get__
     def __get__(self, obj, objtype):
         """Get the named attribute."""
-        return u.Quantity(getattr(super(obj.__class__, obj), self.name), self.unit)
+        return u.Quantity(getattr(obj.__wrapped_instance__, self.name), self.unit)
         
 _CELCIUS_OFFSET = 273.15 * u.K
         
