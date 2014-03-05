@@ -19,12 +19,9 @@ import astropy.coordinates
 import astropy.units as u
 import ephem
 
-import functools
 import six
 import inspect
-import abc
 
-from pyshell.util import descriptor__get__
 
 __all__ = ['register_transformation', 'convert', 'convert_astropy_to_ephem', 'convert_ephem_to_astropy']
 
@@ -76,12 +73,13 @@ def convert_astropy_to_ephem_weak(obj):
     obj_type = astropy_or_ephem(obj)
     if obj_type == "astropy":
         return convert_astropy_to_ephem(obj)
-    elif isinstance(obj, AttributeConverter):
-        return obj.__wrapped_instance__
-    elif inspect.isclass(obj) and issubclass(obj, AttributeConverter):
-        return obj.__wrapped_class__
     else:
-        return obj
+        from .bases import EphemClass
+        if isinstance(obj, EphemClass):
+            return obj.__wrapped_instance__
+        elif inspect.isclass(obj) and issubclass(obj, EphemClass):
+            return obj.__wrapped_class__
+    return obj
     
 def convert(obj):
     """Convert the object"""
@@ -138,80 +136,6 @@ register_transformation(*_angle_tuples(astropy.coordinates.Longitude, reverse=Fa
 register_transformation(*_angle_tuples(astropy.coordinates.Angle))
 # Mixin Class
 
-@six.add_metaclass(abc.ABCMeta)
-class AttributeConverter(object):
-    """Converts attributes"""
-    
-    __wrapped_class__ = None
-    
-    def __init__(self, *args, **kwargs):
-        """Initialize this instance."""
-        super(AttributeConverter, self).__init__(*args, **kwargs)
-        self.__dict__['__wrapped_instance__'] = self.__wrapped_class__(*args, **kwargs)
-    
-    @staticmethod
-    def decorate_attribute_convert(f):
-        """Convert function results from """
-        @functools.wraps(f)
-        def wrap_convert(*args, **kwargs):
-            e_args = [convert_astropy_to_ephem_weak(arg) for arg in args]
-            e_kwargs = { key:convert_astropy_to_ephem_weak(kwargs[key]) for key in kwargs }
-            return convert_ephem_to_astropy_weak(f(*e_args, **e_kwargs))
-        return wrap_convert
-        
-    def __getattr__(self, attribute_name):
-        """Manipulate attribute access to use :mod:`astropy` objects."""
-        attribute = getattr(self.__wrapped_instance__, attribute_name)
-        if six.callable(attribute) and isinstance(attribute.__self__, self.__wrapped_class__):
-            return self.decorate_attribute_convert(attribute)
-        return convert_ephem_to_astropy_weak(attribute)
-        
-    def __setattr__(self, attribute_name, value):
-        """Set attributes, with type conversion."""
-        if (not attribute_name.startswith("__")) and hasattr(self.__wrapped_instance__, attribute_name):
-            value = convert_astropy_to_ephem_weak(value)
-            return setattr(self.__wrapped_instance__, attribute_name, value)
-        return super(AttributeConverter, self).__setattr__(attribute_name, value)
-    
-    @classmethod
-    def __subclasshook__(cls, C):
-        if cls.__wrapped_class__ is not None:
-            if issubclass(C, cls.__wrapped_class__):
-                return True
-        return NotImplemented
 
-class WrappedUnitAttribute(object):
-    """A descriptor which wraps an ephem attribute, giving it astropy units.."""
-    def __init__(self, name, unit):
-        super(WrappedUnitAttribute, self).__init__()
-        self.name = name
-        self.unit = unit
-        
-    def __set__(self, obj, value):
-        """Set named the attribute"""
-        setattr(obj.__wrapped_instance__, self.name, u.Quantity(value, self.unit).value)
-        
-    @descriptor__get__
-    def __get__(self, obj, objtype):
-        """Get the named attribute."""
-        return u.Quantity(getattr(obj.__wrapped_instance__, self.name), self.unit)
-        
-_CELCIUS_OFFSET = 273.15 * u.K
-        
-class CelciusAttribute(WrappedUnitAttribute):
-    """A unit attribute in Celcius"""
-    def __init__(self, name):
-        super(CelciusAttribute, self).__init__(name, unit=u.K)
-        
-    def __set__(self, obj, value):
-        """Set with offset."""
-        return super(CelciusAttribute, self).__set__(obj, value - _CELCIUS_OFFSET)
-        
-    @descriptor__get__
-    def __get__(self, obj, objtype):
-        """Get with offsets."""
-        return super(CelciusAttribute, self).__get__(obj, objtype) + _CELCIUS_OFFSET
-        
-    
         
         

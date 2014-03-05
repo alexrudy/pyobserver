@@ -16,9 +16,9 @@ import astropy.units as u
 from astropy.coordinates import ICRS, FK5, AltAz
 from astropy.time import Time
 
-from .types import convert, AttributeConverter, WrappedUnitAttribute, CelciusAttribute
+from .bases import EphemClass, EphemAttribute, EphemCelciusAttribute
 
-class Observer(AttributeConverter):
+class Observer(EphemClass):
     """Make an observer."""
     
     __wrapped_class__ = ephem.Observer
@@ -28,10 +28,10 @@ class Observer(AttributeConverter):
         for keyword, value in kwargs.items():
             setattr(self, keyword, value)
     
-    elevation = WrappedUnitAttribute("elevation", u.m)
+    elevation = EphemAttribute("elevation", u.m)
     
-    temp = CelciusAttribute("temp")
+    temp = EphemCelciusAttribute("temp")
     
-    pressure = WrappedUnitAttribute("pressure", 1e-3 * u.bar)
+    pressure = EphemAttribute("pressure", 1e-3 * u.bar)
     
 
