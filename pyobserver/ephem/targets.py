@@ -17,6 +17,7 @@ import astropy.units as u
 from astropy.coordinates import ICRS, FK5, AltAz
 from astropy.time import Time
 
+from ..util import parse_starlist_line
 from .bases import EphemClass, EphemPositionClass
 
 class Target(EphemPositionClass):
@@ -37,7 +38,7 @@ class Target(EphemPositionClass):
         if self.name is not None:
             repr_str += "'{}'".format(self.name)
         try:
-            repr_str += " at (RA={ra},DEC={dec})".format(
+            repr_str += " at RA={ra}, Dec={dec}".format(
                 ra = self.fixed_position.ra.to_string(u.hour, sep=":", pad=True),
                 dec = self.fixed_position.dec.to_string(u.degree, sep=":", alwayssign=True),
             )
@@ -57,6 +58,12 @@ class Target(EphemPositionClass):
         self._ra = coord_fk5.ra
         self._dec = coord_fk5.dec
         self._epoch = coord_fk5.equinox
+        
+    @classmethod
+    def from_starlist(cls, text):
+        """Parse the text from a starlist."""
+        data = parse_starlist_line(text)
+        return cls(position = data["Position"], name = data["Name"])
         
     
 

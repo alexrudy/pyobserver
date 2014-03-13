@@ -39,9 +39,9 @@ class EphemClass(object):
     def __repr__(self):
         """Represent this object"""
         try:
-            repr_str = "<{} ".format(self.__class__.__name__)
+            repr_str = "<{}".format(self.__class__.__name__)
             if hasattr(self,'name') and self.name is not None:
-                repr_str += "'{}'".format(self.name)
+                repr_str += " '{}' ".format(self.name)
             return repr_str + ">"
         except:
             wrapped_repr = repr(getattr(self,'__wrapped_instance__',getattr(self,'__wrapped_class__','UNKNOWN')))[1:-1]
@@ -66,10 +66,20 @@ class EphemClass(object):
         
     def __setattr__(self, attribute_name, value):
         """Set attributes, with type conversion."""
+        if attribute_name in dir(self):
+            return super(EphemClass, self).__setattr__(attribute_name, value)
+        elif (not attribute_name.startswith("__")) and hasattr(self.__wrapped_instance__, attribute_name):
+            value = convert_astropy_to_ephem_weak(value)
+            return setattr(self.__wrapped_instance__, attribute_name, value)
+        else:
+            return super(EphemClass, self).__setattr__(attribute_name, value)
+        
+    def __set_wrapped_attr__(self, attribute_name, value):
+        """Set a wrapped attribute name and value."""
         if (not attribute_name.startswith("__")) and hasattr(self.__wrapped_instance__, attribute_name):
             value = convert_astropy_to_ephem_weak(value)
             return setattr(self.__wrapped_instance__, attribute_name, value)
-        return super(EphemClass, self).__setattr__(attribute_name, value)
+        raise AttributeError("{}:{} doesn't have attribute '{}'".format(self.__class__.__name__, self.__wrapped_class__.__name__, attribute_name))
     
     @classmethod
     def __subclasshook__(cls, C):
@@ -87,7 +97,7 @@ class EphemAttribute(object):
         
     def __set__(self, obj, value):
         """Set named the attribute"""
-        setattr(obj.__wrapped_instance__, self.name, u.Quantity(value, self.unit).value)
+        return obj.__set_wrapped_attr__(self.name, u.Quantity(value, self.unit).value)
         
     @descriptor__get__
     def __get__(self, obj, objtype):
@@ -162,10 +172,10 @@ class EphemPositionClass(EphemClass):
     
     def to_starlist(self):
         """To a starlist format"""
-        string = "{name:<20s} {ra:s} {dec:s} {epoch:.0f}".format(
+        string = "{name:<15s} {ra:s} {dec:s} {epoch:.0f}".format(
                                 name = self.name.strip(),
                                 ra = self.position.ra.to_string(u.hour, sep=" ", pad=True),
-                                dec = self.position.dec.to_string(u.degree, sep=" ", alwayssign=True),
+                                dec = self.position.dec.to_string(u.degree, sep=" ", alwayssign=False, pad=True),
                                 epoch = self.position.equinox.jyear,
                             )
         return string

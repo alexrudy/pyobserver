@@ -13,12 +13,13 @@ from __future__ import (absolute_import, unicode_literals, division,
 
 import numpy as np
 import pytz
+import datetime
 import astropy.units as u
 import astropy.time
 import astropy.table
 import pandas as pd
 from .targets import Sun, Moon
-
+import sys
 
 
 class Night(object):
@@ -32,17 +33,21 @@ class Night(object):
         self.observer = observer
         self.date = date
         
-    @property
-    def start(self):
-        """Start"""
-        self.observer.date = self.date
-        return self.observer.next_setting(self.sun)
+    
         
     @property
-    def end(self):
-        """End"""
-        self.observer.date = self.start
-        return self.observer.next_rising(self.sun)
+    def date(self):
+        """Date"""
+        return self._date
+        
+    @date.setter
+    def date(self, value):
+        """Set the date, night start and night end."""
+        self._date = value
+        self.observer.date = value
+        self.end = self.observer.next_rising(self.sun)
+        self.observer.date = self.end
+        self.start = self.observer.previous_setting(self.sun)
         
     @property
     def length(self):
@@ -99,42 +104,126 @@ def airmass(altitude):
     airmass = 1.0 / np.cos(zenith_angle)
     return airmass
 
-class VisibilityPlot(object):
+class EphemerisPlotBase(object):
+    """Base class for Ephemeris Plotting"""
+    
+    @staticmethod
+    def setup_dual_axis(ax):
+        """Setup a dual axis for use with the airmass chart."""
+        ax2 = ax._make_twin_axes()
+        
+        # New X-Axis
+        ax2.xaxis.tick_top()
+        ax2.xaxis.set_label_position('top')
+        
+        # New Y-Axis
+        ax2.yaxis.tick_right()
+        ax2.yaxis.set_label_position('right')
+        ax2.yaxis.set_offset_position('right')
+        
+        # Hide the patch
+        ax2.patch.set_visible(False)
+        
+        # Tick only where necessary on the old axis.
+        ax.xaxis.tick_bottom()
+        ax.yaxis.tick_left()
+        
+        return ax2
+    
+    @staticmethod
+    def format_timezone_axis(axis, timezone, label="Time", fmt=None):
+        """Set up an axis with formatters for a specific timezone."""
+        import matplotlib.dates
+        if not isinstance(timezone, datetime.tzinfo):
+            timezone = pytz.timezone(timezone)
+        date_locator = matplotlib.dates.AutoDateLocator()
+        if fmt is None:
+            date_formatter = matplotlib.dates.AutoDateFormatter(date_locator, tz=timezone)
+        else:
+            date_formatter = matplotlib.dates.DateFormatter(fmt, tz=timezone)
+        axis.set_major_locator(date_locator)
+        axis.set_major_formatter(date_formatter)
+        if label:
+            axis.set_label_text("{0:s} ({1:s})".format(label, timezone))
+        
+    @staticmethod
+    def format_units_axis(axis, unit, label=""):
+        """Set an axis to have unit formatting."""
+        import matplotlib.ticker
+        unit_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value} {0.unit:latex}".format(x * unit))
+        axis.set_major_formatter(unit_formatter)
+        if label:
+            axis.set_label_text("{0:s} ({1:latex})".format(label, unit))
+        
+    @staticmethod
+    def format_airmass_axis(axis, unit, label=r"Airmass ($\sec(z)$)"):
+        """Format an axis in airmass."""
+        import matplotlib.ticker
+        airmass_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value:.2f} {0.unit:latex}".format(airmass(x * u.degree)))
+        axis.set_major_formatter(airmass_formatter)
+        if label:
+            axis.set_label_text(label)
+
+
+class ObservabilityPlot(EphemerisPlotBase):
+    """A plot of observability throughout a Semester."""
+    def __init__(self, observer):
+        super(ObservabilityPlot, self).__init__()
+        self.observer = observer
+        
+
+class VisibilityPlot(EphemerisPlotBase):
     """A single observing night at a specific observatory."""
     
-    increment = 1 * u.minute
+    increment = 6 * u.minute
     
     def __init__(self, observer, date):
         super(VisibilityPlot, self).__init__()
         self.night = Night(observer, date)
-        self.targets = set()
+        self.targets = list()
+        
+    def add(self, target):
+        """Add a target."""
+        if target not in self.targets:
+            self.targets.append(target)
     
-    def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(30 * u.degree)):
+    
+        
+    def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
+                    moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(30 * u.degree),
+                    output=False):
         """Make a visibility plot on a given axes object."""
-        import matplotlib.dates
-        import matplotlib.ticker
-        utc_tz = pytz.timezone("UTC")
-        date_locator = matplotlib.dates.AutoDateLocator()
-        date_formatter = matplotlib.dates.AutoDateFormatter(date_locator, tz=utc_tz)
-        local_tz = pytz.timezone("US/Hawaii")
-        local_date_locator = matplotlib.dates.AutoDateLocator()
-        local_date_formatter = matplotlib.dates.AutoDateFormatter(local_date_locator, tz=local_tz)
-        airmass_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value:.2f} {0.unit:latex}".format(airmass(x * u.degree)))
-        unit_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value} {0.unit:latex}".format(x * unit))
         ylim_values = (el[0].to(unit).value, el[1].to(unit).value)
-        
-        ax_z = ax._make_twin_axes()
-        ax_z.xaxis.tick_top()
-        ax_z.xaxis.set_label_position('top')
-        ax.xaxis.tick_bottom()
-        ax_z.yaxis.tick_right()
-        ax_z.yaxis.set_label_position('right')
-        ax_z.yaxis.set_offset_position('right')
-        ax.yaxis.tick_left()
-        ax_z.patch.set_visible(False)
-        
+        text_el_limit = el[0] + 0.1 * (el[1] - el[0])
+        ax_z = self.setup_dual_axis(ax)
         times = self.night.times(self.increment)
+        
+        if hasattr(output, 'write') and hasattr(output, 'flush'):
+            stream = output
+        else:
+            stream = sys.stdout
+        
+        def progress():
+            if output:
+                stream.write(".")
+                stream.flush()
+                
+        def finish():
+            if output:
+                stream.write("\n")
+                stream.flush()
+            
+        moon_pos = []
+        altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
+        for i, time in enumerate(times):
+            self.night.observer.date = time
+            moon_pos.append(self.night.moon.position)
+            altitude_angle[i] = self.night.moon.alt
+        ax.plot(times.datetime, altitude_angle.to(unit).value, 'k--', label=r"Moon", alpha=0.5)
+        ax_z.plot(times.datetime, altitude_angle.to(unit).value, 'k--', alpha=0.0)
+        
         for target in self.targets:
+            progress()
             altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
             moon_distance = np.zeros((len(times),), dtype=float) * u.degree
             last_moon_distance = self.night.start
@@ -142,9 +231,10 @@ class VisibilityPlot(object):
                 self.night.observer.date = time
                 target.compute(self.night.observer)
                 altitude_angle[i] = target.alt
-                moon_distance[i] = self.night.moon.position.separation(target.position)
-                if last_moon_distance + moon_distance_spacing <= time and (altitude_angle[i] >= el[0] and moon_distance[i] <= moon_distance_maximum):
-                    ax.annotate(
+                moon_distance[i] = moon_pos[i].separation(target.position)
+                if ((last_moon_distance + moon_distance_spacing <= time) and 
+                    (altitude_angle[i] >= text_el_limit and moon_distance[i] <= moon_distance_maximum)):                    
+                    annotate = ax.annotate(
                         s = "{0.value:0.0f} {0.unit:latex}".format(moon_distance[i]),
                         xy = (time.datetime, altitude_angle[i].to(unit).value),
                         xytext = [0.0, -40.0],
@@ -152,30 +242,60 @@ class VisibilityPlot(object):
                     last_moon_distance = time
                 
                 
-            ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=target.name)
+            ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=r"\verb|{}|".format(target.name))
             ax_z.plot(times.datetime, altitude_angle.to(unit).value, ':')
         
-        ax.axvline(self.night.start.datetime)
+        finish()
+        # Sunrise and Sunset lines.
+        xmin, xmax = (self.night.start - 1.0 * u.hour), (self.night.end + 1.0 * u.hour)
+        ax.set_xlim(xmin.datetime, xmax.datetime)
+        ax.axvspan(xmin.datetime, self.night.start.datetime, color='k', alpha=0.2)
+        ax.axvspan(xmax.datetime, self.night.end.datetime, color='k', alpha=0.2)
         
-        ax.xaxis.set_major_locator(date_locator)
-        ax.xaxis.set_major_formatter(date_formatter)
-        ax.yaxis.set_major_formatter(unit_formatter)
-        ax.set_ylabel("Elevation ({0:latex})".format(u.degree))
-        ax.set_xlabel("Time ({0!s})".format(utc_tz))
+        # Label Bright Zones
+        ax.text(0.02, 0.5, "Before Sunset", transform=ax.transAxes, va='center', ha='left', rotation=90)
+        ax.text(0.98, 0.5, "After Sunrise", transform=ax.transAxes, va='center', ha='right', rotation=90)
+        
+        # Axis formatting
         ax.grid(True, axis='both')
         ax.xaxis.tick_bottom()
+        ax.xaxis.set_label_position('bottom')
+        self.format_timezone_axis(ax.xaxis, "UTC", fmt="%H:%M")
+        self.format_units_axis(ax.yaxis, unit, "Elevation")
         
-        ax_z.yaxis.set_major_formatter(airmass_formatter)
-        ax_z.set_ylabel(r"Airmass ($\sec(z)$)")
-        ax_z.set_xlabel("Time ({0!s})".format(local_tz))
+        # Add dates to UTC axis.
+        ax.text(-0.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.start), transform=ax.transAxes, va='top', ha='right',
+            bbox=dict(fc='white', ec='none'))
+        ax.text(1.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.end), transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(fc='white', ec='none'))
+        
+        # 2nd Axis Formatting
         ax_z.xaxis.tick_top()
-        ax_z.xaxis.set_major_locator(local_date_locator)
-        ax_z.xaxis.set_major_formatter(local_date_formatter)
         ax_z.xaxis.set_visible(True)
         ax_z.xaxis.set_label_position('top')
+        self.format_timezone_axis(ax_z.xaxis, self.night.observer.timezone, fmt="%H:%M")
+        self.format_airmass_axis(ax_z.yaxis, unit)
         
+        # Add dates to localtime axis.
+        local_tz = self.night.observer.timezone
+        utc_tz = pytz.UTC
+        local_start = utc_tz.localize(self.night.start.datetime).astimezone(local_tz)
+        local_end = utc_tz.localize(self.night.end.datetime).astimezone(local_tz)
+        ax.text(-0.02, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=ax.transAxes, va='bottom', ha='right',
+            bbox=dict(fc='white', ec='none'))
+        ax.text(1.02, 1.05, "{0:%Y/%m/%d}".format(local_end), transform=ax.transAxes, va='bottom', ha='left',
+            bbox=dict(fc='white', ec='none'))
+        
+        # Axis limits
         ax.set_ylim(*ylim_values)
-        ax_z.set_ylim(*ylim_values)
+        # We have to keep the 2nd axis limits in sync with the first axis, by hand.
+        ax_z.set_ylim(*ax.get_ylim())
         ax_z.set_xlim(*ax.get_xlim())
-        ax.legend()
+        
+        legend_bboxes = {
+            'Outside' : (0.0, 0.0, 1.35, 1.0), # l b w h
+            'Inside' : (0.0, 0.0, 1.0, 1.0),
+        }
+        
+        ax.legend(bbox_to_anchor=legend_bboxes[legend], fontsize=8, title="Targets")
         
