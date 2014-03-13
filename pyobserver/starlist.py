@@ -77,18 +77,20 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
     
     def sl2reg(self):
         """Convert a starlist to a region file."""
+        from astropy.coordinates import FK5
+        import astropy.units as u
         print("Converting '{input:s}' starlist to '{output:s}' ds9 region file.".format(**vars(self.opts)))
         self.targets = parse_starlist(self.opts.input)
         with open(self.opts.output,'w') as regionfile:
             regionfile.write(self._header)
             regionfile.write("%s\n" % self.opts.coordinates)
             for target in self.targets:
-                target["ra"] = ":".join(target["ra"].split())
-                target["dec"] = ":".join(target["dec"].split())
+                target["RA"] = target["Position"].to(FK5).ra.to_string(u.hourangle, sep=":", pad=False)
+                target["Dec"] = target["Position"].to(FK5).dec.to_string(u.degree, sep=":", pad=False)
                 target["radius"] = self.opts.radius
-                keywords = [ "{0}={1}".format(key,value) for key,value in target.items() if key not in ["ra", "dec", "radius", "name" ] ]
+                keywords = [ "{0}={1}".format(key,value) for key,value in target.items() if key not in ["RA", "Dec", "radius", "Name", "Position" ] ]
                 target["keywords"] = " ".join(keywords)
-                regionfile.write("circle({ra},{dec},{radius}) # text={{{name}}} {keywords:s}\n".format(**target))
+                regionfile.write("circle({RA},{Dec},{radius}) # text={{{Name}}} {keywords:s}\n".format(**target))
             
         
     
@@ -112,7 +114,7 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
                     
                     # Parse the location
                     ra,dec = region.coord_list[0:2]
-                    loc = coord.FK5Coordinates(ra=ra,dec=dec,unit=(u.degree,u.degree))
+                    loc = coord.FK5(ra=ra,dec=dec,unit=(u.degree,u.degree))
                     if "text" in region.attr[1]:
                         name = region.attr[1]["text"]
                     else:
