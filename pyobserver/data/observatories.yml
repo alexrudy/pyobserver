@@ -1,0 +1,6 @@
+Keck II:
+  lat: !angle "+19:49:35.61788 deg"
+  lon: !angle "-155:28:27.24268 deg"
+  elevation: !quantity "4159.581216 m"
+  name: "Keck II (Mauna Kea)"
+  
