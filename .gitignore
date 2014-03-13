@@ -11,5 +11,14 @@
 examples/*
 tests/testdata/*
 
+# Generated Files
+*.pdf
+*.hdf5
+*.sqlite
+
+# Data files not explicitly added.
+*.txt
+*.dat
+
 # DOCS
 docs/build/*
