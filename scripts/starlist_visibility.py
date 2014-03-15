@@ -19,7 +19,7 @@ if "VIRTUAL_ENV" in os.environ:
 
 
 from pyobserver.ephem import VisibilityPlot, Target, Observer
-from pyobserver.util import read_skip_comments
+from pyobserver.starlist import read_skip_comments
 
 import sys
 import six

@@ -17,7 +17,7 @@ import astropy.units as u
 from astropy.coordinates import ICRS, FK5, AltAz
 from astropy.time import Time
 
-from ..util import parse_starlist_line
+from ..starlist import parse_starlist_line
 from .bases import EphemClass, EphemPositionClass
 
 class Target(EphemPositionClass):
