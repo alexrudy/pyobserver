@@ -52,24 +52,24 @@ def verify_starlist_line(text, identifier="<stream line 0>", warning=False):
     messages = []
     match = _starlist_re.match(text)
     if not match:
-        raise ValueError("Couldn't parse '{}', no regular expression match found.".format(text))
+        raise ValueError("Couldn't parse '{0:s}', no regular expression match found.".format(text))
     data = match.groupdict("")
     
     # Check the Name:
     if match.end('Name') < 15:
-        messages.append(('Warning','Name','Name should be exactly 15 characters long (whitespace is ok.) len(Name)={0}'.format(match.end('Name'))))
+        messages.append(('Warning','Name','Name should be exactly 15 characters long (whitespace is ok.) len(Name)={0:d}'.format(match.end('Name'))))
     
     # Check the RA starting position.
     if match.start('RA') != 16:
-        messages.append(('Error','RA','RA must start in column 17. Start: {0}'.format(match.start('RA')+1)))
+        messages.append(('Error','RA','RA must start in column 17. Start: {0:d}'.format(match.start('RA')+1)))
     
     # Check the Dec starting token
     if match.start('Dec') - match.end('RA') != 1:
-        messages.append(('Warning','Dec','RA and Dec should be separated by only a single space, found {} characters.'.format(match.start('Dec') - match.end('RA'))))
+        messages.append(('Warning','Dec','RA and Dec should be separated by only a single space, found {0:d} characters.'.format(match.start('Dec') - match.end('RA'))))
     
     # Check the Equinox starting token.
     if match.start('Equinox') - match.end('Dec') != 1:
-        messages.append(('Warning','Equinox','Dec and Equinox should be separated by only a single space, found {} characters.'.format(match.start('Equinox') - match.end('Dec'))))
+        messages.append(('Warning','Equinox','Dec and Equinox should be separated by only a single space, found {0:d} characters.'.format(match.start('Equinox') - match.end('Dec'))))
     
     if match.group("Keywords") and len(match.group("Keywords")):
         for kwarg in match.group("Keywords").split():
@@ -235,7 +235,7 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
                             comments.remove(comment)
                     
                     # Write out the starlist line
-                    starlist.write("{name:<20s} {ra:s} {dec:s} {epoch:.0f} {keywords:s}".format(
+                    starlist.write("{name:<15s} {ra:s} {dec:s} {epoch:.0f} {keywords:s}".format(
                         name = name.strip(),
                         ra = loc.ra.format(u.hour, sep=" ", pad=True),
                         dec = loc.dec.format(sep=" ", alwayssign=True),
