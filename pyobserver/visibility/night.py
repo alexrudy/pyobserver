@@ -18,7 +18,7 @@ import astropy.units as u
 import astropy.time
 import astropy.table
 import pandas as pd
-from .targets import Sun, Moon
+from astropyephem.targets import Sun, Moon
 import sys
 
 
