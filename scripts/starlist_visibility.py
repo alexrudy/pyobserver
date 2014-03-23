@@ -18,7 +18,9 @@ if "VIRTUAL_ENV" in os.environ:
     del activate_this
 
 
-from pyobserver.ephem import VisibilityPlot, Target, Observer
+from pyobserver.visibility import VisibilityPlot
+from astropyephem import Observer
+from astropyephem import FixedBody as Target
 from pyobserver.starlist import read_skip_comments
 
 import sys
