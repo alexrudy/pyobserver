@@ -18,8 +18,7 @@ if "VIRTUAL_ENV" in os.environ:
     del activate_this
 
 
-from pyobserver.visibility import VisibilityPlot
-from astropyephem import Observer
+from pyobserver.visibility import VisibilityPlot, Observatory
 from astropyephem import FixedBody as Target
 from pyobserver.starlist import read_skip_comments
 
@@ -45,12 +44,13 @@ def visibility_main():
     parser.add_argument("starlist", type=six.text_type, help="Starlist Filename")
     parser.add_argument("-d","--date", help="Date before night, as parsed by Astropy.", default=Time.now())
     parser.add_argument("-o","--output", type=six.text_type, help="Output filename.")
-    parser.add_argument("--tz", type=six.text_type, help="Local Timezone.")
+    parser.add_argument("-O","--observatory", type=six.text_type, help="Observatory Name", default="Mauna Kea")
     parser.add_argument("--show", action="store_true", help="Show, don't save.")
     options = parser.parse_args()
     
     # Setup timing.
     date = Time(options.date, scale='utc')
+    print("<Date {}>".format(date))
     
     # Setup Filename
     if not options.output:
@@ -58,34 +58,31 @@ def visibility_main():
         options.output = "visibility_{0}_{1.datetime:%Y%m%d}.pdf".format(basename.replace(" ", "_"), date)
     
     # Setup Observatory
-    o = Observer(
-        lat = Latitude("19 49 35.61788", u.degree),
-        lon = Longitude("-155 28 27.24268", u.degree, wrap_angle=180 * u.deg),
-        name = "Keck II")
-    o.elevation = 13646.92 * imperial.ft
-    o.timezone = "US/Hawaii"
+    o = Observatory.from_name(options.observatory)
     print(o)
     
     # Setup Figure
     fig = plt.figure()
     bbox = (0.1, 0.1, 0.65, 0.8) # l, b, w, h
     v_ax = fig.add_axes(bbox)
-    v = VisibilityPlot(o, date)
+    v_plotter = VisibilityPlot(o, date)
+    print(v_plotter.night)
     
     # Setup Targets
     for target_line in read_skip_comments(options.starlist):
         t = Target.from_starlist(target_line)
         print(t)
-        v.add(t)
+        v_plotter.add(t)
+    
     print("Computing Plot...", end="")
-    v(v_ax, output = len(v.targets) > 3)
-    if len(v.targets) <= 3:
+    v_plotter(v_ax, output = len(v.targets) > 3)
+    if len(v_plotter.targets) <= 3:
         print("\n")
     print("Outputting Plot...")
     if options.show:
         plt.show()
     else:
-        plt.savefig(options.output)
+        fig.savefig(options.output)
         subprocess.call(["open", options.output])
         
 if __name__ == '__main__':
