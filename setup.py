@@ -25,12 +25,12 @@ setup(
         'six>=1.5.2',
         # 'pyds9==1.6',
         'pyshell>=0.3.0',
-        'astropyephem>=0.1',
+        'astropyephem>=0.1.1',
     ],
     dependency_links = [
         'http://hea-www.harvard.edu/RD/download/pyds9/pyds9-1.6.tar.gz#egg=pyds9-1.6',
         'git+https://github.com/alexrudy/pyshell.git@develop#egg=pyshell-1.0-dev',
-        'git+https://github.com/alexrudy/astropyephem.git@v0.1#egg=astropyephem-0.1',
+        'git+https://github.com/alexrudy/astropyephem.git@v0.1.1#egg=astropyephem-0.1.1',
     ],
     entry_points = {
         'console_scripts' : [
