@@ -33,7 +33,12 @@ class Night(object):
         self.observer = observer
         self.date = date
         
-    
+    def __repr__(self):
+        repr_str = "<{}".format(self.__class__.__name__)
+        if hasattr(self, '_date'):
+            repr_str += " @{0:%Y-%m-%d}".format(self.date.datetime)
+            repr_str += " for {0.value:.1f} {0.unit}".format(self.length.to(u.hour))
+        return repr_str + ">"
         
     @property
     def date(self):
@@ -213,6 +218,7 @@ class VisibilityPlot(EphemerisPlotBase):
                 stream.write("\n")
                 stream.flush()
             
+        # Handle the moon.
         moon_pos = []
         altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
         for i, time in enumerate(times):
@@ -264,7 +270,7 @@ class VisibilityPlot(EphemerisPlotBase):
         self.format_units_axis(ax.yaxis, unit, "Elevation")
         
         # Add dates to UTC axis.
-        ax.text(-0.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.start), transform=ax.transAxes, va='top', ha='right',
+        ax.text(-0.015, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.start), transform=ax.transAxes, va='top', ha='right',
             bbox=dict(fc='white', ec='none'))
         ax.text(1.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.end), transform=ax.transAxes, va='top', ha='left',
             bbox=dict(fc='white', ec='none'))
@@ -281,10 +287,14 @@ class VisibilityPlot(EphemerisPlotBase):
         utc_tz = pytz.UTC
         local_start = utc_tz.localize(self.night.start.datetime).astimezone(local_tz)
         local_end = utc_tz.localize(self.night.end.datetime).astimezone(local_tz)
-        ax.text(-0.02, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=ax.transAxes, va='bottom', ha='right',
+        ax.text(-0.015, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=ax.transAxes, va='bottom', ha='right',
             bbox=dict(fc='white', ec='none'))
         ax.text(1.02, 1.05, "{0:%Y/%m/%d}".format(local_end), transform=ax.transAxes, va='bottom', ha='left',
             bbox=dict(fc='white', ec='none'))
+        
+        ax.text(1+0.35/2, 0.02, "{0:s}".format(self.night.observer.name), transform=ax.transAxes, va='bottom', ha='center',
+            bbox=dict(fc='white', ec='none'))
+        
         
         # Axis limits
         ax.set_ylim(*ylim_values)

@@ -1,6 +1,40 @@
-Keck II:
+Keck II: &KeckII
   lat: !angle "+19:49:35.61788 deg"
   lon: !angle "-155:28:27.24268 deg"
   elevation: !quantity "4159.581216 m"
   name: "Keck II (Mauna Kea)"
+  timezone: "US/Hawaii"
+Keck I: &KeckI
+  lat: !angle "+19 49 33.40757 deg"
+  lon: !angle "-155 28 28.98665 deg"
+  elevation: !quantity "4159.581216 m"
+  name: "Keck I (Mauna Kea)"
+  timezone: "US/Hawaii"
+
+# Keck Aliases
+Keck 1:
+  << *KeckI
+
+Keck 2:
+  << *KeckII
   
+Keck:
+  << *KeckI
+  
+# A site representing the entire site at Mauna Kea
+Mauna Kea:
+  lat: !angle "+19 49 30 deg"
+  lon: !angle "-155 28 15 deg"
+  elevation: !quantity "4160 m"
+  name: "Mauna Kea"
+  timezone: "US/Hawaii"
+
+
+Lick: &Lick
+  lon: !angle "-121:38:09.9 deg"
+  lat: !angle "+37:20:35.2 deg"
+  elevation: !quantity "1290 m"
+  timezone: "US/Pacific"
+  
+Lick 3m:
+  << *Lick

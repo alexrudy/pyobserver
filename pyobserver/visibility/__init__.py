@@ -2,3 +2,4 @@
 
 from .night import *
 from .targets import *
+from .observatory import Observatory
