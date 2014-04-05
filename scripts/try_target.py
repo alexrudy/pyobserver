@@ -18,7 +18,8 @@ if "VIRTUAL_ENV" in os.environ:
     del activate_this
 
 
-from pyobserver.ephem import VisibilityPlot, Target, Observer
+from pyobserver.ephem import VisibilityPlot, Observatory
+from astropyephem import FixedBody as Target
 
 
 import sys
@@ -43,6 +44,7 @@ def visibility_main():
     parser.add_argument("target", type=six.text_type, help="Object name as resolved by SIMBAD")
     parser.add_argument("-d","--date", help="Date before night, as parsed by Astropy.", default=Time.now())
     parser.add_argument("-o","--output", type=six.text_type, help="Output filename.")
+    parser.add_argument("-O", "--observatory", type=six.text_type, help="Observatory Name", default="Mauna Kea")
     parser.add_argument("--tz", type=six.text_type, help="Local Timezone.")
     parser.add_argument("--show", action="store_true", help="Show, don't save.")
     options = parser.parse_args()
@@ -54,12 +56,7 @@ def visibility_main():
     if not options.output:
         options.output = "visibility_{0}_{1:%Y%m%d}.pdf".format(t.name.replace(" ", "_"), date.datetime)
     
-    o = Observer(
-        lat = Latitude("19 49 35.61788", u.degree),
-        lon = Longitude("-155 28 27.24268", u.degree, wrap_angle=180 * u.deg),
-        name = "Keck II")
-    o.elevation = 13646.92 * imperial.ft
-    o.timezone = "US/Hawaii"
+    o = Observatory.from_name(options.observatory)
     print(o)
     t.compute(o)
     print(t)
