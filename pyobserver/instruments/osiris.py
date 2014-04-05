@@ -28,7 +28,7 @@ def get_osiris_configuration():
     return _config
 
 def osiris_scales_at_redshift(z, cosmo=None):
-    """Return a table of OSIRIS filters and thier respective scales."""
+    """Return a table of OSIRIS filters and their respective scales."""
     if cosmo is None:
         cosmo = astropy.cosmology.get_current()
     config = get_osiris_configuration()
