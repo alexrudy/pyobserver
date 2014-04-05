@@ -108,31 +108,44 @@ def airmass(altitude):
     zenith_angle = 90 * u.degree - altitude
     airmass = 1.0 / np.cos(zenith_angle)
     return airmass
+    
+def setup_dual_axis(ax1):
+    """Set up an axis for dual-scales.
+    
+    Dual scales are those where the left and right y-axes refer to the same
+    data, and the top and bottom x-axes refer to the same data. The plot
+    then shows two related scales.
+    
+    This method uses the private :meth:`~matplotlib.axes.Axes._make_twin_axes` command, then changes
+    thea axis behaviors using normal matplotlib commands.
+    
+    """
+    ax2 = ax1._make_twin_axes()
+    
+    # New X-Axis
+    ax2.xaxis.tick_top()
+    ax2.xaxis.set_label_position('top')
+    
+    # New Y-Axis
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position('right')
+    ax2.yaxis.set_offset_position('right')
+    
+    # Hide the patch
+    ax2.patch.set_visible(False)
+    
+    # Tick only where necessary on the old axis.
+    ax1.xaxis.tick_bottom()
+    ax1.yaxis.tick_left()
+    
+    return (ax1, ax2)
 
 class EphemerisPlotBase(object):
     """Base class for Ephemeris Plotting"""
     
-    @staticmethod
-    def setup_dual_axis(ax):
+    def setup_dual_axis(self, ax):
         """Setup a dual axis for use with the airmass chart."""
-        ax2 = ax._make_twin_axes()
-        
-        # New X-Axis
-        ax2.xaxis.tick_top()
-        ax2.xaxis.set_label_position('top')
-        
-        # New Y-Axis
-        ax2.yaxis.tick_right()
-        ax2.yaxis.set_label_position('right')
-        ax2.yaxis.set_offset_position('right')
-        
-        # Hide the patch
-        ax2.patch.set_visible(False)
-        
-        # Tick only where necessary on the old axis.
-        ax.xaxis.tick_bottom()
-        ax.yaxis.tick_left()
-        
+        ax, ax2 = setup_dual_axis(ax)
         return ax2
     
     @staticmethod
@@ -192,8 +205,6 @@ class VisibilityPlot(EphemerisPlotBase):
         if target not in self.targets:
             self.targets.append(target)
     
-    
-        
     def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
                     moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(30 * u.degree),
                     output=False):
