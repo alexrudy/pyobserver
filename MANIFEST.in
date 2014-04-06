@@ -1,6 +1,7 @@
 include README.rst
+include requirements.txt
+include ReleaseNotes.rst
 
-include distribute_setup.py
 recursive-include pyobserver *.pyx *.c *.yml
 
 recursive-include pyobserver/data *
