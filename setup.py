@@ -19,13 +19,13 @@ setup(
     author_email = "arrudy@ucsc.edu",
     install_requires = [
         'numpy>=1.8.0',
-        'matplotlib>=1.3.0'
+        'matplotlib>=1.3.0',
         'Jinja2>=2.7.2',
         'PyYAML>=3.10',
         'astropy>=0.3',
         'numpy>=1.8.0',
         'six>=1.5.2',
-        'pyds9==1.6',
+        # 'pyds9>=1.6',
         'pyshell>=0.3.0',
         'astropyephem>=0.1.1',
     ],
@@ -36,7 +36,8 @@ setup(
     ],
     entry_points = {
         'console_scripts' : [
-            "PO = pyobserver.cli:POcommand.script"
+            "PO = pyobserver.fits.cli:POcommand.script",
+            "PyVisibility = pyobserver.visibility.cli:VIScommand.script"
         ],
     },
     )

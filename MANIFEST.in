@@ -3,11 +3,13 @@ include README.rst
 include distribute_setup.py
 recursive-include pyobserver *.pyx *.c *.yml
 
+recursive-include pyobserver/data *
 recursive-include docs *
 recursive-include licenses *
 recursive-include cextern *
 recursive-include scripts *
 
 exclude *.pyc *.o 
+global-exclude .DS_Store
 prune docs/_build
 prune build
