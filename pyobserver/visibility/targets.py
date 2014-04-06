@@ -11,13 +11,20 @@ from __future__ import (absolute_import, unicode_literals, division, print_funct
 
 
 from astropyephem import FixedBody
-from ..starlist import parse_starlist_line
+from ..starlist import parse_starlist_line, read_skip_comments
 
-def from_starlist(cls, text):
-    """Produce a fixed-body item from a starlist."""
-    data = parse_starlist_line(text)
-    for key in data:
-        data[key.lower()] = data.pop(key)
-    return cls(position = data['position'], name = data['name'])
+class Target(FixedBody):
+    """A subclass of FixedBody with a starlist interface."""
     
-FixedBody.from_starlist = classmethod(from_starlist)
+    @classmethod
+    def from_starlist(cls, text):
+        """Produce a fixed-body item from a starlist."""
+        data = parse_starlist_line(text)
+        for key in data:
+            data[key.lower()] = data.pop(key)
+        return cls(**data)
+    
+def parse_starlist_targets(starlist):
+    """Parse a starlist into targets."""
+    for line in read_skip_comments(starlist):
+        yield Target.from_starlist(line)
