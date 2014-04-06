@@ -7,31 +7,37 @@
 #  Copyright 2012 Alexander Rudy. All rights reserved.
 # 
 
-try:
-    import setuptools
-except ImportError:
-    from distribute_setup import use_setuptools
-    use_setuptools()
 
 from setuptools import setup, find_packages
 
-from pyobserver import version
-
 setup(
     name = "pyobserver",
-    version = version,
+    version = "0.3.0",
     packages = find_packages(exclude=['tests']),
     package_data = {'pyobserver': ['pyobserver/data/*']},
-    install_requires = ['distribute','astropy>=0.2','pyshell>=0.3.0','pyds9==1.6'],
-    dependency_links = [
-        'https://github.com/alexrudy/pyshell/archive/0.3.0.tar.gz#egg=pyshell-0.3.0',
-        'http://hea-www.harvard.edu/RD/download/pyds9/pyds9-1.6.tar.gz#egg=pyds9-1.6'
-    ],
     author = "Alexander Rudy",
     author_email = "arrudy@ucsc.edu",
+    install_requires = [
+        # 'numpy>=1.8.0',
+        # 'matplotlib>=1.3.0',
+        'Jinja2>=2.7.2',
+        'PyYAML>=3.10',
+        'astropy>=0.3',
+        'numpy>=1.8.0',
+        'six>=1.5.2',
+        # 'pyds9>=1.6',
+        'pyshell==1.0-dev',
+        'astropyephem>=0.1.1',
+    ],
+    dependency_links = [
+        'http://hea-www.harvard.edu/RD/download/pyds9/pyds9-1.6.tar.gz#egg=pyds9-1.6',
+        'git+https://github.com/alexrudy/pyshell.git@develop#egg=pyshell-1.0-dev',
+        'git+https://github.com/alexrudy/astropyephem.git@v0.1.1#egg=astropyephem-0.1.1',
+    ],
     entry_points = {
         'console_scripts' : [
-            "PO = pyobserver.cli:POcommand.script"
+            "PO = pyobserver.fits.cli:POcommand.script",
+            "PyVisibility = pyobserver.visibility.cli:VIScommand.script"
         ],
     },
     )

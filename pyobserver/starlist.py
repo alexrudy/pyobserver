@@ -16,16 +16,124 @@ This module implements the :program:`PO slds9` command.
 """
 from pyshell.subcommand import SCEngine
 
-from datetime import date, datetime
 import os.path
 from textwrap import fill
 import warnings
+from datetime import date, datetime
 
-import pyshell.util
+import astropy.units as u
+import astropy.time
+from astropy.coordinates import FK4, FK5
 
-pyshell.util.ipydb()
+import re
+_starlist_re_raw = r"""
+    ^(?P<Name>.{1,15})[\ ]+ # Target name must be the first 15 characters.
+    (?P<RA>[\d]{1,2}\ [\d]{2}\ [\d]{2}(?:\.[\d]+)?)[\ ]+  # Right Ascension, HH MM SS.SS+
+    (?P<Dec>[+-]?[\d]{1,2}\ [\d]{2}\ [\d]{2}(?:\.[\d]+)?)[\ ]+ # Declination, (-)DD MM SS.SS+
+    (?P<Equinox>(?:[\d]{4}(?:\.[\d]+)?)|(?:APP))[\ ]* # Equinox.
+    (?P<Keywords>.+)?$ # Everything else must be a keyword.
+    """
+    
+_starlist_re = re.compile(_starlist_re_raw, re.VERBOSE)
 
-from .util import parse_starlist
+_starlist_re_strict = r"""
+    ^(?P<Name>.{15})\  # Target name must be the first 15 characters.
+    (?P<RA>[\d]{2}\ [\d]{2}\ [\d]{2}(?:\.[\d]+)?)\   # Right Ascension, HH MM SS.SS+
+    (?P<Dec>[+-]?[\d]{1,2}\ [\d]{2}\ [\d]{2}(?:\.[\d]+)?)\  # Declination, (-)DD MM SS.SS+
+    (?P<Equinox>(?:[\d]{4}(?:\.[\d]+)?)|(?:APP))[\ ]? # Equinox.
+    (?P<Keywords>[^\ ].+)?$ # Everything else must be a keyword.
+    """
+
+_starlist_token_parts = ["Name", "RA", "Dec", "Equinox", "Keywords"]
+
+def verify_starlist_line(text, identifier="<stream line 0>", warning=False):
+    """Verify that the given line is a valid starlist."""
+    line = text
+    messages = []
+    match = _starlist_re.match(text)
+    if not match:
+        raise ValueError("Couldn't parse '{0:s}', no regular expression match found.".format(text))
+    data = match.groupdict("")
+    
+    # Check the Name:
+    if match.end('Name') < 15:
+        messages.append(('Warning','Name','Name should be exactly 15 characters long (whitespace is ok.) len(Name)={0:d}'.format(match.end('Name'))))
+    
+    # Check the RA starting position.
+    if match.start('RA') != 16:
+        messages.append(('Error','RA','RA must start in column 17. Start: {0:d}'.format(match.start('RA')+1)))
+    
+    # Check the Dec starting token
+    if match.start('Dec') - match.end('RA') != 1:
+        messages.append(('Warning','Dec','RA and Dec should be separated by only a single space, found {0:d} characters.'.format(match.start('Dec') - match.end('RA'))))
+    
+    # Check the Equinox starting token.
+    if match.start('Equinox') - match.end('Dec') != 1:
+        messages.append(('Warning','Equinox','Dec and Equinox should be separated by only a single space, found {0:d} characters.'.format(match.start('Equinox') - match.end('Dec'))))
+    
+    if match.group("Keywords") and len(match.group("Keywords")):
+        for kwarg in match.group("Keywords").split():
+            if kwarg.count("=") < 1:
+                messages.append(('Error', 'Keywords', 'Each keyword/value pair must have 1 "=", none found {!r}'.format(kwarg)))
+            if kwarg.count("=") > 1:
+                messages.append(('Error', 'Keywords', 'Each keyword/value pair must have 1 "=", {0:d} found {1!r}'.format(kwarg.count("="), kwarg)))
+    
+    for severity, token, message in messages:
+        composed_message = "[{0}][{1} {2}] {3}".format(severity, identifier, token, message)
+        if warning:
+            warnings.warn(composed_message)
+        else:
+            print(composed_message)
+    
+
+def parse_starlist_line(text):
+    """docstring for parse_starlist_line"""
+    match = _starlist_re.match(text)
+    if not match:
+        raise ValueError("Couldn't parse '{}', no regular expression match found.".format(text))
+    data = match.groupdict("")
+    if data['Equinox'] == "APP":
+        equinox = astropy.time.Time.now()
+        coords = FK5
+    else:
+        equinox = astropy.time.Time(float(data['Equinox']), format='jyear', scale='utc')
+        if float(data['Equinox']) <= 1950:
+            equinox = astropy.time.Time(float(data['Equinox']), format='byear', scale='utc')
+            coords = FK4
+        else:
+            coords = FK5
+    
+    position = coords(data["RA"], data["Dec"], unit=(u.hourangle, u.degree), equinox=equinox)
+    
+    results = dict(
+        Name = data['Name'].strip(),
+        Position = position,
+    )
+    for keywordvalue in data.get("Keywords","").split():
+        if keywordvalue.count("=") < 1:
+            warnings.warn("Illegal Keyword Argument: '{}'".format(keywordvalue))
+            continue
+        keyword, value = keywordvalue.split("=",1)
+        keyword = keyword.strip()
+        if keyword in set(["Name", "Position"]):
+            warnings.warn("Illegal Keyword Name: '{}'".format(keyword))
+        results[keyword] = value.strip()
+    return results
+    
+def read_skip_comments(filename, comments="#"):
+    """Read a filename, yielding lines that don't start with comments."""
+    with open(filename, 'r') as stream:
+        for line in stream:
+            if not line.startswith(comments):
+                yield line.strip().strip("\n\r")
+    
+def parse_starlist(starlist):
+    """Parse a starlist into a sequence of dictionaries."""
+    for line in read_skip_comments(starlist):
+        yield parse_starlist_line(line)
+    
+
+
 
 class StarlistToRegion(SCEngine):
     """Convert a starlist to a ds9 region"""
@@ -77,18 +185,20 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
     
     def sl2reg(self):
         """Convert a starlist to a region file."""
+        from astropy.coordinates import FK5
+        import astropy.units as u
         print("Converting '{input:s}' starlist to '{output:s}' ds9 region file.".format(**vars(self.opts)))
         self.targets = parse_starlist(self.opts.input)
         with open(self.opts.output,'w') as regionfile:
             regionfile.write(self._header)
             regionfile.write("%s\n" % self.opts.coordinates)
             for target in self.targets:
-                target["ra"] = ":".join(target["ra"].split())
-                target["dec"] = ":".join(target["dec"].split())
+                target["RA"] = target["Position"].to(FK5).ra.to_string(u.hourangle, sep=":", pad=False)
+                target["Dec"] = target["Position"].to(FK5).dec.to_string(u.degree, sep=":", pad=False)
                 target["radius"] = self.opts.radius
-                keywords = [ "{0}={1}".format(key,value) for key,value in target.items() if key not in ["ra", "dec", "radius", "name" ] ]
+                keywords = [ "{0}={1}".format(key,value) for key,value in target.items() if key not in ["RA", "Dec", "radius", "Name", "Position" ] ]
                 target["keywords"] = " ".join(keywords)
-                regionfile.write("circle({ra},{dec},{radius}) # text={{{name}}} {keywords:s}\n".format(**target))
+                regionfile.write("circle({RA},{Dec},{radius}) # text={{{Name}}} {keywords:s}\n".format(**target))
             
         
     
@@ -112,7 +222,7 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
                     
                     # Parse the location
                     ra,dec = region.coord_list[0:2]
-                    loc = coord.FK5Coordinates(ra=ra,dec=dec,unit=(u.degree,u.degree))
+                    loc = coord.FK5(ra=ra,dec=dec,unit=(u.degree,u.degree))
                     if "text" in region.attr[1]:
                         name = region.attr[1]["text"]
                     else:
@@ -125,7 +235,7 @@ global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=
                             comments.remove(comment)
                     
                     # Write out the starlist line
-                    starlist.write("{name:<20s} {ra:s} {dec:s} {epoch:.0f} {keywords:s}".format(
+                    starlist.write("{name:<15s} {ra:s} {dec:s} {epoch:.0f} {keywords:s}".format(
                         name = name.strip(),
                         ra = loc.ra.format(u.hour, sep=" ", pad=True),
                         dec = loc.dec.format(sep=" ", alwayssign=True),
