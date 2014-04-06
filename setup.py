@@ -12,21 +12,21 @@ from setuptools import setup, find_packages
 
 setup(
     name = "pyobserver",
-    version = "0.1",
+    version = "0.3.0",
     packages = find_packages(exclude=['tests']),
     package_data = {'pyobserver': ['pyobserver/data/*']},
     author = "Alexander Rudy",
     author_email = "arrudy@ucsc.edu",
     install_requires = [
-        'numpy>=1.8.0',
-        'matplotlib>=1.3.0',
+        # 'numpy>=1.8.0',
+        # 'matplotlib>=1.3.0',
         'Jinja2>=2.7.2',
         'PyYAML>=3.10',
         'astropy>=0.3',
         'numpy>=1.8.0',
         'six>=1.5.2',
         # 'pyds9>=1.6',
-        'pyshell>=0.3.0',
+        'pyshell==1.0-dev',
         'astropyephem>=0.1.1',
     ],
     dependency_links = [

@@ -1,6 +1,12 @@
 Release Notes for PyObserver
 ============================
 
+0.3.0
+-----
+
+- First release to contain the visibility plotter.
+- A ``PO fix`` command for fixing OBJECT keywords in images.
+
 0.2.1
 -----
 
