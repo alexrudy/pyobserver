@@ -20,8 +20,7 @@ from pyshell import PYSHELL_LOGGING_STREAM_ALL
 from astropy.time import Time
 from astropy.coordinates import ICRS
 
-from pyobserver.visibility import VisibilityPlot, Observatory
-from astropyephem import FixedBody as Target
+from pyobserver.visibility import VisibilityPlot, Observatory, Target
 from pyobserver.starlist import read_skip_comments
 
 def _ll(value=0):
