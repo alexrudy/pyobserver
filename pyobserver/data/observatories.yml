@@ -13,19 +13,19 @@ Keck I: &KeckI
 
 # Keck Aliases
 Keck 1:
-  << *KeckI
+  *KeckI
 
 Keck 2:
-  << *KeckII
+  *KeckII
   
 Keck:
-  << *KeckI
+  *KeckI
   
 KeckI:
-  << *KeckI
+  *KeckI
   
 KeckII:
-  << *KeckII
+  *KeckII
   
 # A site representing the entire site at Mauna Kea
 Mauna Kea:
@@ -43,4 +43,4 @@ Lick: &Lick
   timezone: "US/Pacific"
   
 Lick 3m:
-  << *Lick
+  *Lick
