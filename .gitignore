@@ -22,3 +22,4 @@ tests/testdata/*
 
 # DOCS
 docs/build/*
+.ipynb_checkpoints/*
