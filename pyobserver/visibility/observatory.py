@@ -17,7 +17,7 @@ import pytz
 import datetime
 
 import astropy.units as u
-from astropy.coordinates import ICRS, FK5, AltAz, Angle
+from astropy.coordinates import SkyCoord, ICRS, FK5, AltAz, Angle
 from astropy.time import Time
 
 from pyshell.config import StructuredConfiguration

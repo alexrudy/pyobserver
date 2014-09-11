@@ -11,7 +11,7 @@ from __future__ import (absolute_import, unicode_literals, division, print_funct
 
 
 from astropyephem import FixedBody
-from astropy.coordinates import AltAz, FK5, FK4
+from astropy.coordinates import SkyCoord, AltAz, FK5, FK4
 from ..starlist import parse_starlist_line, read_skip_comments
 
 class StarlistBase(object):
@@ -29,7 +29,7 @@ class StarlistBase(object):
         for key in data:
             data[key.lower()] = data.pop(key)
         obj = None
-        klass = cls.REGISTRY[type(data['position'])]
+        klass = cls.REGISTRY[type(data['position'].frame)]
         return klass(**data)
     
     @classmethod

@@ -18,7 +18,7 @@ from pyshell.subcommand import SCController, SCEngine
 import pyshell.loggers
 from pyshell import PYSHELL_LOGGING_STREAM_ALL
 from astropy.time import Time
-from astropy.coordinates import ICRS
+from astropy.coordinates import SkyCoord
 
 from pyobserver.visibility import VisibilityPlot, Observatory, Target
 from pyobserver.starlist import read_skip_comments
@@ -143,7 +143,7 @@ class TargetVisibility(VisibilityCLI):
     
     def set_targets(self, v_plotter):
         """Setup the single target."""
-        t = Target(name=self.opts.target, position=ICRS.from_name(self.opts.target))
+        t = Target(name=self.opts.target, position=SkyCoord.from_name(self.opts.target, frame='icrs'))
         self.log.log(_ll(2), t)
         v_plotter.add(t)
         

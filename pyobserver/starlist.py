@@ -23,7 +23,7 @@ from datetime import date, datetime
 
 import astropy.units as u
 import astropy.time
-from astropy.coordinates import FK4, FK5, AltAz
+from astropy.coordinates import SkyCoord, FK4, FK5, AltAz
 
 import re
 _starlist_re_raw = r"""
@@ -114,11 +114,11 @@ def parse_starlist_line(text):
         equinox = astropy.time.Time(float(data['Equinox']), format='jyear', scale='utc')
         if float(data['Equinox']) <= 1950:
             equinox = astropy.time.Time(float(data['Equinox']), format='byear', scale='utc')
-            coords = FK4
+            frame = 'fk4'
         else:
-            coords = FK5
+            frame = 'fk5'
     
-    position = coords(data["RA"], data["Dec"], unit=(u.hourangle, u.degree), equinox=equinox)
+    position = SkyCoord(data["RA"], data["Dec"], unit=(u.hourangle, u.degree), equinox=equinox, frame=frame)
     
     results = dict(
         Name = data['Name'].strip(),
