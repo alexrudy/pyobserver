@@ -23,14 +23,14 @@ from datetime import date, datetime
 
 import astropy.units as u
 import astropy.time
-from astropy.coordinates import FK4, FK5
+from astropy.coordinates import FK4, FK5, AltAz
 
 import re
 _starlist_re_raw = r"""
-    ^(?P<Name>.{1,15})[\ ]+ # Target name must be the first 15 characters.
-    (?P<RA>[\d]{1,2}\ [\d]{2}\ [\d]{2}(?:\.[\d]+)?)[\ ]+  # Right Ascension, HH MM SS.SS+
-    (?P<Dec>[+-]?[\d]{1,2}\ [\d]{2}\ [\d]{2}(?:\.[\d]+)?)[\ ]+ # Declination, (-)DD MM SS.SS+
-    (?P<Equinox>(?:[\d]{4}(?:\.[\d]+)?)|(?:APP))[\ ]* # Equinox.
+    ^(?P<Name>.{1,15})[\s]+ # Target name must be the first 15 characters.
+    (?P<RA>(?:[\d]{1,2}[\s][\s\d]?[\d][\s][\s\d]?[\d](?:\.[\d]+)?)|(?:[\d]+\.[\d]+))[\s]+  # Right Ascension, HH MM SS.SS+
+    (?P<Dec>(?:[+-]?[\d]{1,2}[\s][\s\d]?[\d][\s][\s\d]?[\d](?:\.[\d]+)?)|(?:[\d]+\.[\d]+)) # Declination, (-)DD MM SS.SS+
+    (?:[\s]+(?P<Equinox>(?:[\d]{4}(?:\.[\d]+)?)|(?:APP)))?[\s]* # Equinox.
     (?P<Keywords>.+)?$ # Everything else must be a keyword.
     """
     
@@ -56,11 +56,12 @@ def verify_starlist_line(text, identifier="<stream line 0>", warning=False):
     data = match.groupdict("")
     
     # Check the Name:
-    if match.end('Name') < 15:
-        messages.append(('Warning','Name','Name should be exactly 15 characters long (whitespace is ok.) len(Name)={0:d}'.format(match.end('Name'))))
+    name_length = match.end('Name') - match.start('Name') + 1
+    if name_length < 15:
+        messages.append(('Warning','Name','Name should be exactly 15 characters long (whitespace is ok.) len(Name)={0:d}'.format(name_length)))
     
     # Check the RA starting position.
-    if match.start('RA') != 16:
+    if match.start('RA') + 1 != 17:
         messages.append(('Error','RA','RA must start in column 17. Start: {0:d}'.format(match.start('RA')+1)))
     
     # Check the Dec starting token
@@ -87,12 +88,26 @@ def verify_starlist_line(text, identifier="<stream line 0>", warning=False):
     
 
 def parse_starlist_line(text):
-    """docstring for parse_starlist_line"""
+    """Parse a single line from a Keck formatted starlist, returning a dictionary of parsed values.
+    
+    :param text: The starlist text line.
+    :returns: A dictionary of starlist object properties, set from teh starlist line.
+    :raises: ValueError if the line couldn't be parsed.
+    
+    This function parses a single line from a starlist and returns a dictionary of items from that line. The followig keys are included:
+    - `Name`: The target name.
+    - `Position`: An astropy.coordinates object representing this position.
+    - Any other keyword/value pairs, which are found at the end of the starlist line, and formatted as ``keyword=value``
+    
+    """
     match = _starlist_re.match(text)
     if not match:
         raise ValueError("Couldn't parse '{}', no regular expression match found.".format(text))
     data = match.groupdict("")
-    if data['Equinox'] == "APP":
+    if data.get('Equinox','') == '':
+        equinox = astropy.time.Time.now()
+        coords = AltAz
+    elif data['Equinox'] == "APP":
         equinox = astropy.time.Time.now()
         coords = FK5
     else:
