@@ -40,6 +40,8 @@ class VisibilityCLI(SCEngine):
         self.parser.add_argument("-O","--observatory", type=six.text_type, help="Observatory Name", default="Mauna Kea")
         self.parser.add_argument("--show", action="store_true", help="Show, don't save.")
         self.parser.add_argument("-v","--verbose", action='count', help="Verbosity", default=0)
+        self.parser.add_argument("--no-filter", dest='gsfilter', action='store_false', help="Don't filter out guide stars.")
+        self.parser.add_argument("--include-psf", dest='psffilter', action='store_false', help="Don't fileter out PSF stars.")
         
     def do(self):
         """Show a visibility plot! With certain abstract parent methods."""
@@ -117,6 +119,10 @@ class StarlistVisibility(VisibilityCLI):
             t = Target.from_starlist(target_line)
             self.log.log(_ll(2), t)
             v_plotter.add(t)
+        if self.opts.psffilter:
+            v_plotter.targets = filter(lambda target : not bool(getattr(target, 'psf', False)),v_plotter.targets)
+        if self.opts.gsfilter:
+            v_plotter.targets = list(v_plotter.filter_gs_targets())
             
     def set_filename(self):
         """Set the filename from command-line arguments."""
@@ -146,6 +152,10 @@ class TargetVisibility(VisibilityCLI):
         t = Target(name=self.opts.target, position=SkyCoord.from_name(self.opts.target, frame='icrs'))
         self.log.log(_ll(2), t)
         v_plotter.add(t)
+        if not self.opts.gsfilter:
+            self.log.warning("Option '--no-filter' has no effect in target mode.")
+        if not self.opts.psffilter:
+            self.log.warning("Option '--include-psf' has no effect in target mode.")
         
 class VIScommand(SCController):
     

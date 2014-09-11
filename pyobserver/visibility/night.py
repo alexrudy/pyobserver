@@ -17,10 +17,11 @@ import datetime
 import astropy.units as u
 import astropy.time
 import astropy.table
+from astropy.utils.console import ProgressBar
 import pandas as pd
 from astropyephem.targets import Sun, Moon
 import sys
-
+import warnings
 
 class Night(object):
     """An object to represent an observing night."""
@@ -176,7 +177,7 @@ class EphemerisPlotBase(object):
     def format_airmass_axis(axis, unit, label=r"Airmass ($\sec(z)$)"):
         """Format an axis in airmass."""
         import matplotlib.ticker
-        airmass_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value:.2f} {0.unit:latex}".format(airmass(x * u.degree)))
+        airmass_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value:.2f}".format(airmass(x * u.degree)))
         axis.set_major_formatter(airmass_formatter)
         if label:
             axis.set_label_text(label)
@@ -206,7 +207,7 @@ def _console_output_functions(output):
             stream.write("\n")
             stream.flush()
     
-    return progress, finish
+    return progress, finish, stream
 
 class VisibilityPlot(EphemerisPlotBase):
     """A single observing night at a specific observatory."""
@@ -223,6 +224,44 @@ class VisibilityPlot(EphemerisPlotBase):
         if target not in self.targets:
             self.targets.append(target)
     
+    def filter_gs_targets(self, sep=(2 * u.arcmin), targetfilter=lambda target : True):
+        """Find science targets and eliminate GS/TT targets"""
+        targets = {}
+        for target in self.targets:
+            if not targetfilter(target):
+                continue
+            if target.name not in targets:
+                # Trying a new target.
+                found_target = False
+                
+                for other_target in targets.values():
+                    
+                    # Only act if we are close to the other target.
+                    if other_target.fixed_position.separation(target.fixed_position) <= sep:
+                        found_target = True
+                        if hasattr(other_target, 'lgs'):
+                            continue
+                        if hasattr(target, 'lgs'):
+                            targets[target.name] = target
+                            targets.pop(other_target.name)
+                            continue
+                        if hasattr(other_target, 'rmag'):
+                            targets[target.name] = target
+                            targets.pop(other_target.name)
+                            continue
+                        if hasattr(target, 'rmag'):
+                            continue
+                        warnings.warn("Two close targets found: {} and {}, can't differentiatie between them. Using first one: {}".format(
+                            other_target.name, target.name, other_target.name
+                        ))
+                if not found_target:
+                    targets[target.name] = target
+            else:
+                warnings.warn("Two targets with the same name found: {!r} and {!r}".format(target, targets[target.name]))
+            
+        return targets.values()
+        
+    
     def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
                     moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(30 * u.degree),
                     output=False):
@@ -232,7 +271,7 @@ class VisibilityPlot(EphemerisPlotBase):
         ax_z = self.setup_dual_axis(ax)
         times = self.night.times(self.increment)
         
-        progress, finish = _console_output_functions(output)
+        progress, finish, stream = _console_output_functions(output)
             
         # Handle the moon.
         moon_pos = []
@@ -244,8 +283,7 @@ class VisibilityPlot(EphemerisPlotBase):
         ax.plot(times.datetime, altitude_angle.to(unit).value, 'k--', label=r"Moon", alpha=0.5)
         ax_z.plot(times.datetime, altitude_angle.to(unit).value, 'k--', alpha=0.0)
         
-        for target in self.targets:
-            progress()
+        for target in ProgressBar(self.targets, file=stream):
             altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
             moon_distance = np.zeros((len(times),), dtype=float) * u.degree
             last_moon_distance = self.night.start
@@ -269,7 +307,6 @@ class VisibilityPlot(EphemerisPlotBase):
             ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=r"\verb|{}|".format(target.name))
             ax_z.plot(times.datetime, altitude_angle.to(unit).value, ':')
         
-        finish()
         # Sunrise and Sunset lines.
         xmin, xmax = (self.night.start - 1.0 * u.hour), (self.night.end + 1.0 * u.hour)
         ax.set_xlim(xmin.datetime, xmax.datetime)
