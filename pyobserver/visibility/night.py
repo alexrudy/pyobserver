@@ -91,7 +91,7 @@ class Night(object):
         target.compute(self.observer)
         for attr in attrs:
             attr_value = getattr(target, attr)
-            result[attr] = np.zeros((len(times),), dtype=attr_value.dtype) * attr_value.unit
+            result[attr] = np.zeros((len(times),), dtype=np.dtype(type(attr_value))) * getattr(attr_value, 'unit', 0)
         
         for i, time in enumerate(times):
             self.observer.date = time
@@ -101,7 +101,6 @@ class Night(object):
         result[timecol] = [ time.datetime for time in times ]
         return pd.DataFrame(result)
 
-    
 
 def airmass(altitude):
     """Compute airmass from altitude."""
@@ -190,6 +189,25 @@ class ObservabilityPlot(EphemerisPlotBase):
         self.observer = observer
         
 
+def _console_output_functions(output):
+    """Prepare console output functions."""
+    if hasattr(output, 'write') and hasattr(output, 'flush'):
+        stream = output
+    else:
+        stream = sys.stdout
+    
+    def progress():
+        if output:
+            stream.write(".")
+            stream.flush()
+            
+    def finish():
+        if output:
+            stream.write("\n")
+            stream.flush()
+    
+    return progress, finish
+
 class VisibilityPlot(EphemerisPlotBase):
     """A single observing night at a specific observatory."""
     
@@ -214,20 +232,7 @@ class VisibilityPlot(EphemerisPlotBase):
         ax_z = self.setup_dual_axis(ax)
         times = self.night.times(self.increment)
         
-        if hasattr(output, 'write') and hasattr(output, 'flush'):
-            stream = output
-        else:
-            stream = sys.stdout
-        
-        def progress():
-            if output:
-                stream.write(".")
-                stream.flush()
-                
-        def finish():
-            if output:
-                stream.write("\n")
-                stream.flush()
+        progress, finish = _console_output_functions(output)
             
         # Handle the moon.
         moon_pos = []
@@ -254,8 +259,10 @@ class VisibilityPlot(EphemerisPlotBase):
                     annotate = ax.annotate(
                         s = "{0.value:0.0f} {0.unit:latex}".format(moon_distance[i]),
                         xy = (time.datetime, altitude_angle[i].to(unit).value),
-                        xytext = [0.0, -40.0],
-                        textcoords='offset points',)
+                        xytext = [-5.0, 0.0],
+                        textcoords = 'offset points',
+                        size = 'x-small',
+                        alpha = 0.5)
                     last_moon_distance = time
                 
                 
@@ -313,6 +320,7 @@ class VisibilityPlot(EphemerisPlotBase):
         ax_z.set_ylim(*ax.get_ylim())
         ax_z.set_xlim(*ax.get_xlim())
         
+        # Apply the legend.
         legend_bboxes = {
             'Outside' : (0.0, 0.0, 1.35, 1.0), # l b w h
             'Inside' : (0.0, 0.0, 1.0, 1.0),
