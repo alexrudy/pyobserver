@@ -28,8 +28,8 @@ from astropy.coordinates import ICRS
 import astropy.units as u
 from astropy.io import fits
 
-from .fits.core import FITSHeaderTable, readfilelist
-from .starlist import StarlistToRegion
+from .core import FITSHeaderTable, readfilelist
+from ..starlist import StarlistToRegion
 
 class FITSCLI(SCEngine):
     """A base class for command line interfaces using pyshell."""
@@ -161,7 +161,7 @@ class FITSCLI(SCEngine):
             table.write(output, format=_format, bookend=False, delimiter=None, include_names=include)
             print("Wrote file {:s} to '{:s}'".format("log" if log else "list", output))
         elif less:
-            from .util import stream_less
+            from ..util import stream_less
             writer = lambda stream : table.write(stream, format=_format, bookend=False, delimiter=None, include_names=include)
             stream_less(writer)
             print("{size:d} files {verb:s}.".format(size=len(table),verb=verb))
@@ -212,7 +212,7 @@ class FITSHead(FITSCLI):
     
     def do(self):
         """Do the work!"""
-        from .util import stream_less
+        from ..util import stream_less
         files = self.get_files()
         search = self.get_keywords()
         data = FITSHeaderTable.fromfiles(files).search(**search)
