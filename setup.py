@@ -9,6 +9,11 @@
 
 
 from setuptools import setup, find_packages
+import glob
+import os.path
+
+scripts = [fname for fname in glob.glob(os.path.join('scripts', '*'))
+           if os.path.basename(fname) != 'README.rst']
 
 setup(
     name = "pyobserver",
@@ -17,16 +22,17 @@ setup(
     package_data = {'pyobserver': ['pyobserver/data/*']},
     author = "Alexander Rudy",
     author_email = "arrudy@ucsc.edu",
+    scripts = scripts,
     install_requires = [
-        # 'numpy>=1.8.0',
-        # 'matplotlib>=1.3.0',
+        'numpy>=1.8.0',
+        'matplotlib>=1.3.0',
         'Jinja2>=2.7.2',
         'PyYAML>=3.10',
         'astropy>=0.3',
         'numpy>=1.8.0',
         'six>=1.5.2',
         # 'pyds9>=1.6',
-        'pyshell==1.0-dev',
+        # 'pyshell==1.0-dev',
         'astropyephem>=0.1.1',
     ],
     dependency_links = [
