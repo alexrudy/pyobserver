@@ -22,9 +22,9 @@ from astropy.time import Time
 
 from pyshell.config import StructuredConfiguration
 from pyshell.yaml import PyshellLoader, PyshellDumper
-from pyshell.astron.yaml_tools import astropy_quantity_yaml_factory
+from pyshell.astron.yaml_tools import astropy_quantity_yaml_factory, astropy_direct_yaml_factory
 
-astropy_quantity_yaml_factory(Angle, PyshellLoader, PyshellDumper, six.text_type)
+astropy_direct_yaml_factory(Angle, PyshellLoader, PyshellDumper)
 astropy_quantity_yaml_factory(u.Quantity, PyshellLoader, PyshellDumper)
 
 _observatories_data = StructuredConfiguration.fromresource('pyobserver', 'data/observatories.yml')
@@ -44,7 +44,7 @@ class Observatory(Observer):
         if hasattr(self, 'name'):
             repr_str += " '{0}'".format(self.name)
         if hasattr(self, 'lat') and hasattr(self, 'lon'):
-            repr_str += " at ({0},{1})".format(self.lat, self.lon)
+            repr_str += " at ({0},{1})".format(self.lat.to_string(u.degree, sep=":", alwayssign=True), self.lon.to_string(u.degree, sep=":", pad=True))
         if hasattr(self, 'date'):
             repr_str += " {0.datetime:%Y-%m-%d %H:%M:%S}".format(self.date)
         if hasattr(self, '_timezone'):
