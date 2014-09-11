@@ -18,4 +18,4 @@ from pyobserver.instruments.osiris import osiris_scales_at_redshift
 physical, angular = osiris_scales_at_redshift(0.1)
 
 for p,a in zip(physical, angular):
-    print("Pixels {0} = {1:.1f} out to {2:.1f} {3:.1f}".format(a, p.to(u.pc), 64 * a, 64 * p.to(u.pc)))
+    print("Pixels {0} = {1:.1f} out to {2:.1f} = {3:.1f}".format(a, p.to(u.pc), 64 * a, 64 * p.to(u.pc)))
