@@ -18,9 +18,7 @@ if "VIRTUAL_ENV" in os.environ:
     del activate_this
 
 
-from pyobserver.ephem import VisibilityPlot, Observatory
-from astropyephem import FixedBody as Target
-
+from pyobserver.visibility import VisibilityPlot, Observatory, Night, Target
 
 import sys
 import six
@@ -28,7 +26,7 @@ import argparse
 import matplotlib
 import astropy.units as u
 from astropy.units import imperial
-from astropy.coordinates import ICRS, Latitude, Longitude
+from astropy.coordinates import SkyCoord, Latitude, Longitude
 from astropy.time import Time
 
 from pyshell.util import ipydb
@@ -50,7 +48,7 @@ def visibility_main():
     options = parser.parse_args()
     
     # Setup Target
-    t = Target(name=options.target, position=ICRS.from_name(options.target))
+    t = Target(name=options.target, position=SkyCoord.from_name(options.target, frame='icrs'))
     date = Time(options.date, scale='utc')
     
     if not options.output:
@@ -60,6 +58,9 @@ def visibility_main():
     print(o)
     t.compute(o)
     print(t)
+    
+    n = Night(o, date)
+    print(n.collect(t, 6 * u.minute, ['alt', 'position'])['alt'])
     
     # Setup Figure
     fig = plt.figure()
