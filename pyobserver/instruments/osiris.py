@@ -30,7 +30,7 @@ def get_osiris_configuration():
 def osiris_scales_at_redshift(z, cosmo=None):
     """Return a table of OSIRIS filters and their respective scales."""
     if cosmo is None:
-        cosmo = astropy.cosmology.get_current()
+        cosmo = astropy.cosmology.default_cosmology.get()
     config = get_osiris_configuration()
     kpc_per_arcmin = cosmo.kpc_proper_per_arcmin(z)
     pixel_scales = (np.array(config["scales"]) * u.arcsec)
