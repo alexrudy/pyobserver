@@ -5,25 +5,43 @@ from __future__ import (absolute_import, unicode_literals, division, print_funct
 
 import six
 import re
+import os, os.path
 
 def parse_closures(filename, date=None):
     """Parse and understand closures."""
     from pyobserver.closures import parse_closures_list
     with open(filename, 'r') as stream:
-        closures = list(parse_closures_list(stream, date))
+        closures = list(parse_closures_list(stream, name=filename, date=date))
     return closures
+    
+def parse_lick_closures(starlist, filenames, date=None):
+    """Parse and understand closures in the lick format."""
+    from pyobserver.closures import LCHClosureParserLick
+    parser = LCHClosureParserLick(starlist, date)
+    return list(parser(starlist, filenames).values())
     
 def main():
     """Argument parsing and main."""
     import argparse
     import glob
+    
+    # Find the default closure filename.
+    default_filenames = glob.glob('opensUnix*.txt')
+    if len(default_filenames) > 0:
+        default_filename = default_filenames[0]
+    else:
+        default_filename = False
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument('filename', nargs='?', type=six.text_type, default=glob.glob('opensUnix*.txt')[0])
+    parser.add_argument('filename', nargs='?', type=six.text_type, default=default_filename)
     parser.add_argument('--soon', action='store_true', help='Show upcoming closures.')
     parser.add_argument('--target', type=six.text_type, help='Show a specific target.')
     parser.add_argument('--when', help='When this closure list applies.')
-    
+    parser.add_argument('--compact', type=six.text_type, help="Use the compact file format. Specify a directory for .lsm files.", default=False)
     opts = parser.parse_args()
+    
+    if not opts.filename:
+        parser.error("Must specify a filename!")
     
     import astropy.time
     if opts.when is not None:
@@ -36,7 +54,11 @@ def main():
         else:
             opts.when = astropy.time.Time.now()
     
-    closures = parse_closures(opts.filename, opts.when)
+    if opts.compact:
+        filenames = os.path.join(opts.compact, "*.lsm")
+        closures = parse_lick_closures(opts.filename, filenames, opts.when)
+    else:
+        closures = parse_closures(opts.filename, opts.when)
     
     if opts.soon:
         show_upcoming_closures(closures)

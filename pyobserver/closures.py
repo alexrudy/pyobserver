@@ -18,6 +18,9 @@ import warnings
 import collections
 import itertools
 import numpy as np
+import glob
+import os, os.path
+import datetime
 
 import astropy.units as u
 from astropy.time import Time
@@ -25,6 +28,7 @@ from astropy.coordinates import FK5, AltAz, FK4
 from astropy.utils.console import human_time
 
 from .visibility.targets import Target, AltAzTarget, StarlistBase
+from .starlist import read_skip_comments
 
 class Region(StarlistBase):
     """Region for LCH Closures"""
@@ -71,6 +75,8 @@ class Region(StarlistBase):
     def _iter_start_end(self):
         """Iterate over pairs of openings, useful for iterating through closures, or through closures and openings."""
         openings = self.openings
+        if len(openings) == 0:
+            return iter([])
         starts = itertools.islice(openings, len(openings)-1) # Take everything but the last element
         ends = itertools.islice(openings, 1, None) # Take everything but the first element
         return itertools.izip(starts, ends)
@@ -91,7 +97,7 @@ class FixedRegion(Region, Target):
 
 @Region.register(AltAz)
 class AltAzRegion(Region, AltAzTarget):
-    """docstring for AltAzRegion"""
+    """An AltAz target region."""
     pass
 
 
@@ -168,6 +174,14 @@ class Opening(Window):
         self.region.add(self)
     
     @classmethod
+    def from_openings_data(cls, region, data):
+        """From already parsed openings data."""
+        obj = cls(region, data["Start"], data["End"])
+        if not np.abs(obj.duration - data["Opening"]) < 1.0 * u.second:
+            raise ValueError("Duration of opening {} does not match parsed value: {}".format(obj, data["Opening"]))
+        return obj
+    
+    @classmethod
     def from_openings(cls, region, text, date=None):
         """Parse a line of openings to create this object.
         
@@ -177,10 +191,7 @@ class Opening(Window):
         
         """
         data = parse_openings_line(text, date)
-        obj = cls(region, data["Start"], data["End"])
-        if not np.abs(obj.duration - data["Opening"]) < 1.0 * u.second:
-            raise ValueError("Duration of opening {} does not match parsed value: {}".format(obj, data["Opening"]))
-        return obj
+        return cls.from_openings_data(region, data)
     
 
 class LCHSummaryGroup(collections.OrderedDict):
@@ -312,6 +323,11 @@ class LCHClosureParser(object):
         self._date = date
         self.reset()
         
+    @property
+    def date(self):
+        """Return the active date."""
+        return self._date
+        
     def reset(self):
         """Reset the parser"""
         self._next_line = "header"
@@ -386,6 +402,58 @@ class LCHClosureParser(object):
         parser = cls(filename, date)
         with open(filename, 'r') as stream:
             return parser(stream)
+
+class LCHClosureParserLick(LCHClosureParser):
+    """Parser for Lick-style .lsm files."""
+    
+    def __init__(self, name, date=None, quiet=True):
+        super(LCHClosureParserLick, self).__init__(name, date)
+        self._quiet = quiet
+    
+    def load_starlist(self, filename):
+        """Load individual starlists."""
+        for line in read_skip_comments(filename):
+            region = Region.from_starlist(line)
+            self._regions[region.name] = region
+        
+    def parse_lsmfile(self, filename):
+        """Parse a single file."""
+        region_name = os.path.splitext(os.path.basename(filename))[0]
+        self._this_line = 'lsm file'
+        if region_name not in self._regions:
+            if not self._quiet:
+                self._warn("Skipping region '{}', not found in starlist.".format(region_name))
+            return
+        self._current_region = self._regions[region_name]
+        with open(filename, 'r') as stream:
+            self._this_line = 'opening'
+            for line in stream:
+                opening = Opening.from_openings_data(self._current_region, parse_openings_compact_format(line, date=self.date))
+    
+    @staticmethod
+    def glob_files(files):
+        """Glob for filenames if nescessary."""
+        if files is None:
+            return glob.iglob(os.path.join(os.path.getcwd(),"*.lsm"))
+        if isinstance(files, six.text_type):
+            return glob.iglob(files)
+        return iter(files)
+    
+    def __call__(self, starlist, files):
+        """Parse a stream line."""
+        self.reset()
+        self.load_starlist(starlist)
+        for fn, file in enumerate(self.glob_files(files)):
+            self._line_number = fn
+            self.parse_lsmfile(file)
+        return self._regions
+    
+    @classmethod
+    def parse_file(cls, starlist, filenames, date=None):
+        """Parse a whole closure file."""
+        parser = cls(starlist, date)
+        parser(starlist, filenames)
+
     
 _openings_re = re.compile(
     r"""
@@ -431,6 +499,39 @@ def parse_openings_line(line, date=Time.now()):
     
     return data
 
+_openings_compact_re = re.compile(r"""
+^[\s]*(?P<Start>[\d]{10})[\s]+(?P<End>[\d]{10})[\s]+(?P<Opening>[\d]+)[\s]+(?P<Closure>[\d]+)[\s]*$
+""", re.VERBOSE)
+
+def parse_openings_compact_format(line, date=Time.now()):
+    """Parse openings which are in the short format."""
+    # Setup the reference date
+    date = Time.now() if date is None else date
+    date.out_subfmt = 'date'
+    date_str = date.iso
+    
+    # Match the regular expression.
+    match = _openings_compact_re.match(line)
+    if not match:
+        raise ValueError("Can't parse line as opening: '{}'".format(line))
+    data = match.groupdict("")
+    # Handle date types
+    for time_key in "Start End".split():
+        data[time_key] = Time(datetime.datetime.utcfromtimestamp(int(data[time_key])), scale='utc')
+        
+    # Handle quantity types
+    for delta_key in "Opening Closure".split():
+        if delta_key in data and len(data[delta_key]):
+            if ":" in data[delta_key]:
+                minutes, seconds = map(float,data[delta_key].split(":"))
+            else:
+                minutes = 0
+                seconds = float(data[delta_key])
+            data[delta_key] = minutes * u.minute + seconds * u.second
+    
+    return data
+    
+
 _summary_line_re = re.compile(r"""
     ^[\s]*(?P<ordinal>[\w]+)[\s]+(?P<objects>[\d]+)[\s]+objects\:[\s]+ # Number of objects
     # Only one of the two following options will appear in a closure line.
@@ -462,9 +563,11 @@ def parse_summary_line(line):
     data["objects"] = int(data["objects"])
     return data
     
-def parse_closures_list(stream, name = "<stream>", date=None):
+
+    
+def parse_closures_list(stream, name="<stream>", date=None, cls=LCHClosureParser):
     """Parse a closure list"""
-    parser = LCHClosureParser(name, date)
+    parser = cls(name, date)
     return parser(stream).values()
             
 def upcoming_closures(regions, limit = 1 * u.hour, when = Time.now()):
