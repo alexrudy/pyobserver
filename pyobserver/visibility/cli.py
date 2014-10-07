@@ -74,6 +74,7 @@ class VisibilityCLI(SCEngine):
         
         self.log.log(_ll(3), "Outputting plot...")
         if self.opts.show:
+            v_plotter.setup_pickers(v_ax)
             plt.show()
         else:
             fig.savefig(self.opts.output)

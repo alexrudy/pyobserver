@@ -75,7 +75,7 @@ class Night(object):
     def times(self, increment):
         """Iterate through a night at a given increment, from sunset to sunrise."""
         data = []
-        for i in range(int((self.length.to(u.day)/increment).to(1)) + 1):
+        for i in range(int((self.length.to(u.day)/increment).to(1)) + 2):
             data.append(self.start + increment * i)
         return astropy.time.Time([ d.datetime for d in data ], scale='utc')
         
@@ -109,7 +109,7 @@ def airmass(altitude):
     airmass = 1.0 / np.cos(zenith_angle)
     return airmass
     
-def setup_dual_axis(ax1):
+def setup_dual_axis(ax1, top=True):
     """Set up an axis for dual-scales.
     
     Dual scales are those where the left and right y-axes refer to the same
@@ -131,12 +131,18 @@ def setup_dual_axis(ax1):
     ax2.yaxis.set_label_position('right')
     ax2.yaxis.set_offset_position('right')
     
-    # Hide the patch
-    ax2.patch.set_visible(False)
+    
+    # Hide the patch of the top axis
+    if top:
+        ax1.patch.set_visible(False)
+    else:
+        ax2.patch.set_visible(False)
     
     # Tick only where necessary on the old axis.
     ax1.xaxis.tick_bottom()
     ax1.yaxis.tick_left()
+    if top:
+        ax1.set_zorder(ax2.get_zorder()+1)
     
     return (ax1, ax2)
 
@@ -218,6 +224,7 @@ class VisibilityPlot(EphemerisPlotBase):
         super(VisibilityPlot, self).__init__()
         self.night = Night(observer, date)
         self.targets = list()
+        self._lines = set()
         
     def add(self, target):
         """Add a target."""
@@ -261,11 +268,53 @@ class VisibilityPlot(EphemerisPlotBase):
             
         return targets.values()
         
+    def teardown_pickers(self):
+        """docstring for teardown_pickers"""
+        self._canvas.mpl_disconnect(self._connection)
+        
+    def setup_pickers(self, ax):
+        """Set up target line pickers."""
+        for artist in self._lines:
+            artist.set_picker(5.0)
+        self._canvas = ax.figure.canvas
+        self._connection = self._canvas.mpl_connect('pick_event', self.on_pick)
+        self._annotation = None
+        self._marker = None
+        
+    def on_pick(self, event):
+        """Action to take on a pick event."""
+        if event.artist not in self._lines:
+            return
+        if self._annotation is not None:
+            self._annotation.remove()
+        if self._marker is not None:
+            self._marker.remove()
+            
+        # Unpack the event information.
+        artist = event.artist
+        x, y = event.mouseevent.xdata, event.mouseevent.ydata
+        ax = artist.axes
+        
+        xd, yd = artist.get_data()
+        xp, yp = xd[event.ind[0]], yd[event.ind[0]]
+        self._marker, = ax.plot(xp, yp, 'o')
+        self._marker.set_color(artist.get_color())
+        text = "\n".join([artist.get_label(), "Elevation: {:.1f} {:latex}".format(yp, self._unit), "UT: {:}".format(xp.strftime("%H:%M"))])
+        
+        self._annotation = ax.annotate(
+            s = text,
+            xy = (xp, yp),
+            xytext = (x, y + 3.0),
+            size = 'small',
+            bbox=dict(boxstyle="round", fc="white", ec=artist.get_color()),
+        )
+        self._canvas.draw()
     
     def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
                     moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(30 * u.degree),
                     output=False):
         """Make a visibility plot on a given axes object."""
+        self._unit = unit
         ylim_values = (el[0].to(unit).value, el[1].to(unit).value)
         text_el_limit = el[0] + 0.1 * (el[1] - el[0])
         ax_z = self.setup_dual_axis(ax)
@@ -280,8 +329,9 @@ class VisibilityPlot(EphemerisPlotBase):
             self.night.observer.date = time
             moon_pos.append(self.night.moon.position)
             altitude_angle[i] = self.night.moon.alt
-        ax.plot(times.datetime, altitude_angle.to(unit).value, 'k--', label=r"Moon", alpha=0.5)
-        ax_z.plot(times.datetime, altitude_angle.to(unit).value, 'k--', alpha=0.0)
+        moon_z, = ax_z.plot(times.datetime, altitude_angle.to(unit).value, 'k--', alpha=0.0)
+        moon, = ax.plot(times.datetime, altitude_angle.to(unit).value, 'k--', label=r"Moon", alpha=0.5)
+        self._lines.add(moon)
         
         for target in ProgressBar(self.targets, file=stream):
             altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
@@ -303,9 +353,10 @@ class VisibilityPlot(EphemerisPlotBase):
                         alpha = 0.5)
                     last_moon_distance = time
                 
-                
-            ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=r"\verb|{}|".format(target.name))
-            ax_z.plot(times.datetime, altitude_angle.to(unit).value, ':')
+            target_z, = ax_z.plot(times.datetime, altitude_angle.to(unit).value, ':')                
+            target, = ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=r"\verb|{}|".format(target.name))
+            self._lines.add(target)
+
         
         # Sunrise and Sunset lines.
         xmin, xmax = (self.night.start - 1.0 * u.hour), (self.night.end + 1.0 * u.hour)
