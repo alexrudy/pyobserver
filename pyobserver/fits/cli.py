@@ -287,7 +287,50 @@ class FITSLog(FITSCLI):
         self.output_table(table)
         
     
+class FITSETC(FITSCLI):
+    """Exposure time calculator"""
+    command = 'exposure'
     
+    options = [ "i", "skw" ]
+    
+    help = "Compute the exposure time for a collection of FITS files."
+    
+    description = fill("Computes the total exposure time for a collection of fits files.")
+    
+    def after_configure(self):
+        """docstring for after_configure"""
+        super(FITSETC, self).after_configure()
+        self.opts.log = True
+        self.parser.add_argument('--list', help="Collect list names for addition to the grouping.", nargs="+", default=[])
+        self.parser.add_argument('--coadds', help='Keyword for number of coadds', default=False)
+        self.parser.add_argument('--itime', help='Keyword for number of coadds', default="ITIME")
+    
+    def do(self):
+        """Make the log table"""
+        files = self.get_files()
+        search = self.get_keywords()
+        search.setdefault(self.opts.itime, True)
+        if self.opts.coadds:
+            search.setdefault(self.opts.coadds, True)
+        
+        if not isinstance(self.opts.list,list):
+            olists = [ self.opts.list ]
+        else:
+            olists = self.opts.list
+        lists = []
+        for _list in olists:
+            lists += glob.glob(_list)
+        
+        
+        print("Will group %d files." % len(files))
+        data = FITSHeaderTable.fromfiles(files).search(**search).group(search.keys())
+        [ data.addlist(_list) for _list in lists ]
+        table = data.table()
+        
+        etc = np.sum(table[self.opts.itime] * table[self.opts.coadds] * table['N'])
+        self.output_table(table, verb="grouped")
+        print("Total exposure: {:.2f}s".format(etc))
+
 
 class FITSList(FITSCLI):
     """Make a list of files with certain header attributes"""
@@ -500,6 +543,7 @@ class POcommand(SCController):
     
     subEngines = [
         FITSGroup,
+        FITSETC,
         FITSLog,
         FITSList,
         FITSInfo,
