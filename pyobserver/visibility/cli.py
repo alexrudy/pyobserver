@@ -56,7 +56,7 @@ class VisibilityCLI(SCEngine):
         import matplotlib.pyplot as plt
         
         self.log.log(_ll(3), "Setting up figure and axes")
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10,9))
         bbox = (0.1, 0.1, 0.65, 0.8) # l, b, w, h
         v_ax = fig.add_axes(bbox)
         
