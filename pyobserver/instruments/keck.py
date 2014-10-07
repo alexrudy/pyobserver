@@ -44,6 +44,9 @@ class Semester(object):
         
     def __contains__(self, value):
         """Determine if the time is in this semester."""
-        return (value >= self.start) and (value <= self.end)
+        try:
+            return (astropy.time.Time(value) >= self.start) and (astropy.time.Time(value) <= self.end)
+        except Exception as e:
+            return (value >= self.start) and (value <= self.end)
         
     
