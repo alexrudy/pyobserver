@@ -223,7 +223,8 @@ class FITSHeaderTable(list):
                     if error:
                         raise KeyError("Keyword '%s' not in file '%s'" % (key, header["OPENNAME"]))
                     if warn:
-                        warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key, header["OPENNAME"]))
+                        pass
+                        # warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key, header["OPENNAME"]))
                     header[key] = blank
         return self
     
@@ -247,7 +248,7 @@ class FITSHeaderTable(list):
             keep = True
             for key,search in keywords.iteritems():
                 if key not in header and (search is not False):
-                    warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key,header.filename))
+                    # warnings.warn("Couldn't find keyword '%s' in file '%s'" % (key,header.filename))
                     keep = False
                 elif hasattr(search,'match'):
                     if not search.match(str(header[key])):
