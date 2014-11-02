@@ -106,10 +106,10 @@ def parse_starlist_line(text):
     data = match.groupdict("")
     if data.get('Equinox','') == '':
         equinox = astropy.time.Time.now()
-        coords = AltAz
+        frame = AltAz
     elif data['Equinox'] == "APP":
         equinox = astropy.time.Time.now()
-        coords = FK5
+        frame = 'fk5'
     else:
         equinox = astropy.time.Time(float(data['Equinox']), format='jyear', scale='utc')
         if float(data['Equinox']) <= 1950:
