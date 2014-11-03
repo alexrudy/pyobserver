@@ -28,8 +28,8 @@ from astropy.coordinates import SkyCoord, FK4, FK5, AltAz
 import re
 _starlist_re_raw = r"""
     ^(?P<Name>.{1,15})[\s]+ # Target name must be the first 15 characters.
-    (?P<RA>(?:[\d]{1,2}[\s][\s\d]?[\d][\s][\s\d]?[\d](?:\.[\d]+)?)|(?:[\d]+\.[\d]+))[\s]+  # Right Ascension, HH MM SS.SS+
-    (?P<Dec>(?:[+-]?[\d]{1,2}[\s][\s\d]?[\d][\s][\s\d]?[\d](?:\.[\d]+)?)|(?:[\d]+\.[\d]+)) # Declination, (-)DD MM SS.SS+
+    (?P<RA>(?:[\d]{1,2}[\s:][\s\d]?[\d][\s:][\s\d]?[\d](?:\.[\d]+)?)|(?:[\d]+\.[\d]+))[\s]+  # Right Ascension, HH MM SS.SS+
+    (?P<Dec>(?:[+-]?[\d]{1,2}[\s:][\s\d]?[\d][\s:][\s\d]?[\d](?:\.[\d]+)?)|(?:[\d]+\.[\d]+)) # Declination, (-)DD MM SS.SS+
     (?:[\s]+(?P<Equinox>(?:[\d]{4}(?:\.[\d]+)?)|(?:APP)))?[\s]* # Equinox.
     (?P<Keywords>.+)?$ # Everything else must be a keyword.
     """
