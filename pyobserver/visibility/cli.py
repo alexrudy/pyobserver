@@ -42,6 +42,7 @@ class VisibilityCLI(SCEngine):
         self.parser.add_argument("-v","--verbose", action='count', help="Verbosity", default=0)
         self.parser.add_argument("--no-filter", dest='gsfilter', action='store_false', help="Don't filter out guide stars.")
         self.parser.add_argument("--include-psf", dest='psffilter', action='store_false', help="Don't fileter out PSF stars.")
+        self.parser.add_argument("--min-elevation", help="Minimum elevation line.", type=float)
         
     def do(self):
         """Show a visibility plot! With certain abstract parent methods."""
@@ -53,6 +54,9 @@ class VisibilityCLI(SCEngine):
         self.log.log(_ll(1), self.opts.observatory)
         
         self.log.log(_ll(3), "Importing 'matplotlib.pyplot'")
+        import matplotlib
+        if self.opts.show:
+            matplotlib.rcParams['text.usetex'] = False
         import matplotlib.pyplot as plt
         
         self.log.log(_ll(3), "Setting up figure and axes")
@@ -68,7 +72,7 @@ class VisibilityCLI(SCEngine):
         self.log.log(_ll(3), "Creating plot...")
         
         show_progress = (len(v_plotter.targets) > 3) and (self.opts.verbose > 1)
-        v_plotter(v_ax, output = show_progress)
+        v_plotter(v_ax, output = show_progress, min_elevation = self.opts.min_elevation)
         if show_progress:
             print("\n")
         

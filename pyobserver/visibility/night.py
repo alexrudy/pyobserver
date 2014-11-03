@@ -22,6 +22,15 @@ import pandas as pd
 from astropyephem.targets import Sun, Moon
 import sys
 import warnings
+import matplotlib
+import matplotlib.dates
+
+def latex_verbose(text):
+    """Make LaTeX verbose text if matplotlib is using TeX for rendering."""
+    if matplotlib.rcParams['text.usetex']:
+        return r"\verb|{:s}|".format(text)
+    else:
+        return "{:s}".format(text)
 
 class Night(object):
     """An object to represent an observing night."""
@@ -75,8 +84,9 @@ class Night(object):
     def times(self, increment):
         """Iterate through a night at a given increment, from sunset to sunrise."""
         data = []
-        for i in range(int((self.length.to(u.day)/increment).to(1)) + 2):
+        for i in range(int((self.length.to(u.day)/increment).to(1)) + 1):
             data.append(self.start + increment * i)
+        data.append(self.end)
         return astropy.time.Time([ d.datetime for d in data ], scale='utc')
         
     @staticmethod
@@ -92,7 +102,7 @@ class Night(object):
         target.compute(self.observer)
         for attr in attrs:
             attr_value = getattr(target, attr)
-            result[attr] = np.zeros((len(times),), dtype=np.dtype(type(attr_value))) * getattr(attr_value, 'unit', 0)
+            result[attr] = np.zeros((len(times),), dtype=getattr(attr_value, 'dtype', type(attr_value))) * getattr(attr_value, 'unit', 0)
         
         for i, time in enumerate(times):
             self.observer.date = time
@@ -174,13 +184,19 @@ class EphemerisPlotBase(object):
     def format_units_axis(axis, unit, label=""):
         """Set an axis to have unit formatting."""
         import matplotlib.ticker
-        unit_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value} {0.unit:latex}".format(x * unit))
+        if matplotlib.rcParams['text.usetex']:
+            unit_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value} {0.unit:latex}".format(x * unit))
+        else:
+            unit_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value} {0.unit:unicode}".format(x * unit))
         axis.set_major_formatter(unit_formatter)
-        if label:
+        if label and matplotlib.rcParams['text.usetex']:
             axis.set_label_text("{0:s} ({1:latex})".format(label, unit))
+        elif label:
+            axis.set_label_text("{0:s} ({1:unicode})".format(label, unit))
+            
         
     @staticmethod
-    def format_airmass_axis(axis, unit, label=r"Airmass ($\sec(z)$)"):
+    def format_airmass_axis(axis, unit, label=r"Airmass sec(z)"):
         """Format an axis in airmass."""
         import matplotlib.ticker
         airmass_formatter = matplotlib.ticker.FuncFormatter(lambda x,p: "{0.value:.2f}".format(airmass(x * u.degree)))
@@ -280,26 +296,50 @@ class VisibilityPlot(EphemerisPlotBase):
         self._connection = self._canvas.mpl_connect('pick_event', self.on_pick)
         self._annotation = None
         self._marker = None
+        self._last_pick = None
+        self._timeline = ax.axvline(datetime.datetime.utcnow(), color='k', zorder=0.1, alpha=0.75)
         
     def on_pick(self, event):
         """Action to take on a pick event."""
         if event.artist not in self._lines:
             return
-        if self._annotation is not None:
-            self._annotation.remove()
-        if self._marker is not None:
-            self._marker.remove()
             
         # Unpack the event information.
         artist = event.artist
         x, y = event.mouseevent.xdata, event.mouseevent.ydata
         ax = artist.axes
         
+        # Get the distance to the nearest point on the line.
         xd, yd = artist.get_data()
         xp, yp = xd[event.ind[0]], yd[event.ind[0]]
+        
+        # Transform into display coordinates.
+        xf, yf = ax.transData.transform((matplotlib.dates.date2num(xp), yp))
+        
+        # Deterime if the last click was actually closer to 
+        # the line than this one.
+        if self._last_pick is not None:
+            xm, ym = ax.transData.transform((x, y))
+            this_distance = (xm-xf)**2 + (ym-yf)**2
+            xl, yl = self._last_pick
+            other_distance = (xm-xl)**2 + (ym-yl)**2
+            if other_distance < this_distance:
+                return
+        
+        self._last_pick = (xf, yf)
+        
+        # Remove the old annotations.  
+        if self._annotation is not None:
+            self._annotation.remove()
+        if self._marker is not None:
+            self._marker.remove()
+        if self._timeline is not None:
+            self._timeline.remove()
+        
+        self._timeline = ax.axvline(datetime.datetime.utcnow(), color='k', zorder=0.1, alpha=0.75)
         self._marker, = ax.plot(xp, yp, 'o')
         self._marker.set_color(artist.get_color())
-        text = "\n".join([artist.get_label(), "Elevation: {:.1f} {:latex}".format(yp, self._unit), "UT: {:}".format(xp.strftime("%H:%M"))])
+        text = "\n".join([artist.get_label(), "Airmass: {0.value:.2f}".format(airmass(yp*u.degree)), "UT: {:}".format(xp.strftime("%H:%M"))])
         
         self._annotation = ax.annotate(
             s = text,
@@ -311,8 +351,8 @@ class VisibilityPlot(EphemerisPlotBase):
         self._canvas.draw()
     
     def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
-                    moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(30 * u.degree),
-                    output=False):
+                    moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(50 * u.degree),
+                    output=False, min_elevation = None):
         """Make a visibility plot on a given axes object."""
         self._unit = unit
         ylim_values = (el[0].to(unit).value, el[1].to(unit).value)
@@ -354,7 +394,7 @@ class VisibilityPlot(EphemerisPlotBase):
                     last_moon_distance = time
                 
             target_z, = ax_z.plot(times.datetime, altitude_angle.to(unit).value, ':')                
-            target, = ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=r"\verb|{}|".format(target.name))
+            target, = ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=latex_verbose(target.name))
             self._lines.add(target)
 
         
@@ -368,6 +408,10 @@ class VisibilityPlot(EphemerisPlotBase):
         ax.text(0.02, 0.5, "Before Sunset", transform=ax.transAxes, va='center', ha='left', rotation=90)
         ax.text(0.98, 0.5, "After Sunrise", transform=ax.transAxes, va='center', ha='right', rotation=90)
         
+        if min_elevation is not None:
+            # Label minimum elevation
+            ax.axhline(u.Quantity(min_elevation, u.degree).to(u.degree).value, ls=':', lw = 2, color = 'r', alpha = 0.75, label="Minimum Elevation")
+        
         # Axis formatting
         ax.grid(True, axis='both')
         ax.xaxis.tick_bottom()
@@ -377,9 +421,9 @@ class VisibilityPlot(EphemerisPlotBase):
         
         # Add dates to UTC axis.
         ax.text(-0.015, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.start), transform=ax.transAxes, va='top', ha='right',
-            bbox=dict(fc='white', ec='none'))
+             color='k')
         ax.text(1.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.end), transform=ax.transAxes, va='top', ha='left',
-            bbox=dict(fc='white', ec='none'))
+             color='k')
         
         # 2nd Axis Formatting
         ax_z.xaxis.tick_top()
@@ -393,13 +437,9 @@ class VisibilityPlot(EphemerisPlotBase):
         utc_tz = pytz.UTC
         local_start = utc_tz.localize(self.night.start.datetime).astimezone(local_tz)
         local_end = utc_tz.localize(self.night.end.datetime).astimezone(local_tz)
-        ax.text(-0.015, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=ax.transAxes, va='bottom', ha='right',
-            bbox=dict(fc='white', ec='none'))
-        ax.text(1.02, 1.05, "{0:%Y/%m/%d}".format(local_end), transform=ax.transAxes, va='bottom', ha='left',
-            bbox=dict(fc='white', ec='none'))
-        
-        ax.text(1+0.35/2, 0.02, "{0:s}".format(self.night.observer.name), transform=ax.transAxes, va='bottom', ha='center',
-            bbox=dict(fc='white', ec='none'))
+        ax.text(-0.015, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=ax.transAxes, va='bottom', ha='right',)
+        ax.text(1.02, 1.05, "{0:%Y/%m/%d}".format(local_end), transform=ax.transAxes, va='bottom', ha='left',)
+        ax.text(1+0.35/2, 0.02, "{0:s}".format(self.night.observer.name), transform=ax.transAxes, va='bottom', ha='center',)
         
         
         # Axis limits
@@ -415,4 +455,5 @@ class VisibilityPlot(EphemerisPlotBase):
         }
         
         ax.legend(bbox_to_anchor=legend_bboxes[legend], fontsize=8, title="Targets")
+        
         
