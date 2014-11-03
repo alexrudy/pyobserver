@@ -37,4 +37,9 @@ def osiris_scales_at_redshift(z, cosmo=None):
     physical_scales = pixel_scales * kpc_per_arcmin
     return physical_scales, pixel_scales
     
+def parse_ddf(filename):
+    """Parse an XML-format DDF file."""
+    import xml.etree.ElementTree as ET
+    return ET.parse(filename)
+    
 
