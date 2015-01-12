@@ -115,7 +115,7 @@ class FITSCLI(SCEngine):
                     except:
                         value = value
             elif len(pair.split("=")) == 1:
-                key,value = pair,True
+                key,value = pair,None
             else:
                 self.parser.error("Argument for Malformed Keyword Pair: '%s'" % pair)
             search[key] = value
