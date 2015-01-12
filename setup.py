@@ -11,9 +11,16 @@
 from setuptools import setup, find_packages
 import glob
 import os.path
+import sys
 
 scripts = [fname for fname in glob.glob(os.path.join('scripts', '*'))
            if os.path.basename(fname) != 'README.rst']
+
+PY2 = sys.version_info[0] == 2
+if PY2:
+    modgrammar = ['modgrammar-py2']
+else:
+    modgrammar = ['modgrammar']
 
 setup(
     name = "pyobserver",
@@ -34,7 +41,7 @@ setup(
         # 'pyds9>=1.6',
         # 'pyshell==1.0-dev',
         'astropyephem>=0.1.1',
-    ],
+    ] + modgrammar,
     dependency_links = [
         'http://hea-www.harvard.edu/RD/download/pyds9/pyds9-1.6.tar.gz#egg=pyds9-1.6',
         'git+https://github.com/alexrudy/pyshell.git@develop#egg=pyshell-1.0-dev',
@@ -43,7 +50,8 @@ setup(
     entry_points = {
         'console_scripts' : [
             "PO = pyobserver.fits.cli:POcommand.script",
-            "PyVisibility = pyobserver.visibility.cli:VIScommand.script"
+            "PyVisibility = pyobserver.visibility.cli:VIScommand.script",
+            "NIRC2-Parse = pyobserver.instruments.nirc2:ParseScript.script"
         ],
     },
     )
