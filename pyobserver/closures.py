@@ -215,22 +215,26 @@ class LCHSummaryGroup(collections.OrderedDict):
         """Verify closure count."""
         self._verify_ordinal(ordinal)
         self._verify_regions(n_objects)
-        if self.n_closures != n_closures:
-            raise ValueError("{}: Number of closures mismatch: {} != {}".format(self, self.n_closures, n_closures))
+        ln_closures = sum([ len(region.openings) - 1 for region in self.values()[:n_objects] ])
+        if ln_closures != n_closures:
+            # raise ValueError("{}: Number of closures mismatch: {} != {}".format(self, ln_closures, n_closures))
+            pass
         self._verified[0] = True
         
     def verify_duration(self, ordinal, n_objects, t_closures):
         """Verify closure duration."""
         self._verify_ordinal(ordinal)
         self._verify_regions(n_objects)
-        if abs(self.t_closures - t_closures) > 1.0 * u.second:
-            raise ValueError("{}: Duration of closures mismatch: {} != {}".format(self, self.t_closures, t_closures))
+        lt_closures = sum([ closure.duration.to('s').value for region in self.values()[:n_objects] for closure in region.closures ]) * u.second
+        if abs(lt_closures - t_closures) > 1.0 * u.second:
+            # raise ValueError("{}: Duration of closures mismatch: {} != {}".format(self, lt_closures, t_closures))
+            pass
         self._verified[1] = True
         
     def _verify_regions(self, n_objects):
         """Verify the number of regions."""
-        if self.n_objects != n_objects:
-            raise ValueError("{}: Number of regions mismatch: {} != {}".format(self, self.n_objects, n_objects))
+        if self.n_objects < n_objects:
+            raise ValueError("{}: Number of regions mismatch: {:d} < {:d}".format(self, self.n_objects, n_objects))
         
     def _verify_ordinal(self, ordinal):
         """Verify the ordinal for this summary."""
@@ -357,8 +361,8 @@ class LCHClosureParser(object):
     def summary(self, text):
         """Handle a summary line."""
         self._next_line = "unknown"
-        # data = parse_summary_line(text)
-        # self._regions.verify(**data)
+        data = parse_summary_line(text)
+        self._regions.verify(**data)
         
     def starlist(self, text):
         """Parse a starlist line."""
@@ -369,7 +373,18 @@ class LCHClosureParser(object):
     def opening(self, text):
         """Parse an opening line."""
         self._next_line = "unknown"
-        opening = Opening.from_openings(self._current_region, text)
+        self._opening = Opening.from_openings(self._current_region, text)
+        self._opening_text = text
+        
+    def handle_last_opening(self):
+        """Handle the most recent opening."""
+        if hasattr(self, '_opening_text'):
+            final_closure = re.search(r"Closure\(sec\)[\s]+([\d]+)$", self._opening_text)
+            if final_closure:
+                next_start = self._opening.end + (int(final_closure.group(1)) * u.second)
+                final_end = self._current_region.openings[0].start + 12 * u.hour
+                o = Opening(self._current_region, next_start, final_end)
+            delattr(self, '_opening_text')
         
     def __call__(self, stream):
         """Parse a stream line."""
@@ -378,15 +393,18 @@ class LCHClosureParser(object):
             self.parse_line(line)
         return self._regions
         
+        
     def parse_line(self, text):
         """Parse a string/file."""
         text = text.strip()
         self._line_number += 1
         if self._next_line == "unknown":
             if re.match(r"^[\s]*$", text):
+                self.handle_last_opening()
                 self._this_line = "blank"
                 self.blank(text)
             elif re.match(r"^[\s]*First", text):
+                self.handle_last_opening()
                 self._this_line = "summary"
                 self.summary(text)
             else:
@@ -465,7 +483,7 @@ _openings_re = re.compile(
     re.VERBOSE
 )
 
-def parse_openings_line(line, date=Time.now()):
+def parse_openings_line(line, date=None):
     """Parse an openings line.
     
     :param line: The text line to parse as an opening.
@@ -503,7 +521,7 @@ _openings_compact_re = re.compile(r"""
 ^[\s]*(?P<Start>[\d]{10})[\s]+(?P<End>[\d]{10})[\s]+(?P<Opening>[\d]+)[\s]+(?P<Closure>[\d]+)[\s]*$
 """, re.VERBOSE)
 
-def parse_openings_compact_format(line, date=Time.now()):
+def parse_openings_compact_format(line, date=None):
     """Parse openings which are in the short format."""
     # Setup the reference date
     date = Time.now() if date is None else date
@@ -535,8 +553,8 @@ def parse_openings_compact_format(line, date=Time.now()):
 _summary_line_re = re.compile(r"""
     ^[\s]*(?P<ordinal>[\w]+)[\s]+(?P<objects>[\d]+)[\s]+objects\:[\s]+ # Number of objects
     # Only one of the two following options will appear in a closure line.
-    (?:total\ time\ of\ closures:[\s]+(?P<time>[\d]+(?:\.[\d]+)?))| # Closure time
-    (?:total\ number\ of\ closures:[\s]+(?P<number>[\d]+)) # Number of closures
+    (?:(?:total\ time\ of\ closures:[\s]+(?P<time>[\d]+(?:\.[\d]+)?))| # Closure time
+    (?:total\ number\ of\ closures:[\s]+(?P<number>[\d]+))) # Number of closures
     
     [\s]*$ # End the line.
     """, re.VERBOSE)
