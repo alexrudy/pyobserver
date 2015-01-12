@@ -12,6 +12,7 @@ from __future__ import (absolute_import, unicode_literals, division, print_funct
 import collections
 import numpy as np
 import os, os.path
+import six
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord, AltAz, FK5, FK4
@@ -99,12 +100,14 @@ class Target(FixedBody, StarlistBase):
     def to_starlist(self):
         """Return a starlist line from this target"""
         pos = self.fixed_position.transform_to(FK5)
-        name = self.name.replace(" ","-")
-        return "{name:<15s} {ra:s} {dec:s} {epoch:.0f}".format(
+        name = self.name.replace(" ","_")
+        keywords = " ".join("{}={}".format(attr, six.text_type(getattr(self, attr))) for attr in self.__keywords__ if not attr.startswith("_"))
+        return "{name:<15s} {ra:s} {dec:s} {epoch:.0f} {keywords:s}".format(
                                 name = name.strip(),
                                 ra = pos.ra.to_string(u.hour, sep=" ", pad=True),
                                 dec = pos.dec.to_string(u.deg, sep=" ", alwayssign=True),
-                                epoch = pos.equinox.jyear)
+                                epoch = pos.equinox.jyear,
+                                keywords = keywords)
     
 class Starlist(list):
     """A set of target objects."""
