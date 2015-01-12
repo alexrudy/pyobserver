@@ -6,20 +6,50 @@ from __future__ import (absolute_import, unicode_literals, division, print_funct
 import six
 import re
 import os, os.path
+import textwrap
 
 def parse_closures(filename, date=None):
     """Parse and understand closures."""
     from pyobserver.closures import parse_closures_list
     with open(filename, 'r') as stream:
-        closures = list(parse_closures_list(stream, name=filename, date=date))
+        closures = parse_closures_list(stream, name=filename, date=date)
     return closures
     
 def parse_lick_closures(starlist, filenames, date=None):
     """Parse and understand closures in the lick format."""
     from pyobserver.closures import LCHClosureParserLick
     parser = LCHClosureParserLick(starlist, date)
-    return list(parser(starlist, filenames).values())
+    return parser(starlist, filenames).values()
     
+epilog = """This script parses a closure list from the US Space Command laser clearing house. Closure lists are parsed in the Keck-style, as a single file with targets listed in starlist format, followed by a list of open windows.
+
+Examples:
+
+To look at upcoming closures from a file "opensUnix150112.txt":
+
+    $ %(prog)s --soon opensUnix150112.txt
+    
+To look at closures for a file from a previous date:
+
+    $ %(prog)s --when 2014-10-10 opensUnix.txt
+    
+The program will automatically parse dates from files whcih use the Keck naming convention, with the date in the filename.
+    
+To list all closures which apply to a target named "MyFavoriteGalaxy":
+
+    $ %(prog)s --target MyFavoriteGalaxy opensUnix150112.txt
+
+Lick style starlists:
+
+The --compact option uses a compact file format which is different from the single-file format used at Keck. For the compact file format, each target is given its own file in a single directory. Target positions are determined from a master starlist. The master starlist is included as `filename`, and the directory of files is the argument to compact, e.g.
+    
+    $ %(prog)s --compact lsm/ starlist.txt
+"""
+
+epilog = "\n".join([ textwrap.fill(paragraph) for paragraph in epilog.splitlines()])
+
+description = textwrap.fill("""A parser and simple CLI view of closures for Laser Guide Star observing.""")
+
 def main():
     """Argument parsing and main."""
     import argparse
@@ -32,12 +62,12 @@ def main():
     else:
         default_filename = False
     
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('filename', nargs='?', type=six.text_type, default=default_filename)
-    parser.add_argument('--soon', action='store_true', help='Show upcoming closures.')
-    parser.add_argument('--target', type=six.text_type, help='Show a specific target.')
-    parser.add_argument('--when', help='When this closure list applies.')
-    parser.add_argument('--compact', type=six.text_type, help="Use the compact file format. Specify a directory for .lsm files.", default=False)
+    parser.add_argument('--soon', action='store_true', help='Show upcoming closures (within the next 60 minutes)')
+    parser.add_argument('--target', type=six.text_type, help='Show a specific target\'s closures.')
+    parser.add_argument('--when', help='Apply this closure list to a date other than today. This should be a date in UTC which can be parsed by the astropy.time module.', type=six.text_type)
+    parser.add_argument('--compact', type=six.text_type, help="Use the compact file format (Mt. Hamilton). Specify a directory for .lsm files.", default=False)
     opts = parser.parse_args()
     
     if not opts.filename:
@@ -45,7 +75,10 @@ def main():
     
     import astropy.time
     if opts.when is not None:
-        opts.when = astropy.time.Time(opts.when, scale='utc', format='iso')
+        try:
+            opts.when = astropy.time.Time(opts.when, scale='utc', format='iso')
+        except ValueError:
+            parser.error("Cannot parse '{:s}' as date.".format(opts.when))
     else:
         m = re.match(r"opens[Unix|Dos](?P<date>[\d]{6})\.txt", opts.filename)
         if m:
@@ -54,16 +87,22 @@ def main():
         else:
             opts.when = astropy.time.Time.now()
     
-    if opts.compact:
-        filenames = os.path.join(opts.compact, "*.lsm")
-        closures = parse_lick_closures(opts.filename, filenames, opts.when)
-    else:
-        closures = parse_closures(opts.filename, opts.when)
+    try:
+        if opts.compact:
+            filenames = os.path.join(opts.compact, "*.lsm")
+            closures = parse_lick_closures(opts.filename, filenames, opts.when)
+        else:
+            closures = parse_closures(opts.filename, opts.when)
+    except IOError as e:
+        parser.error("Cannot open closures in '{:s}'".format(opts.filename))
     
     if opts.soon:
         show_upcoming_closures(closures)
     elif hasattr(opts, 'target') and opts.target is not None:
-        show_target_closures(closures, opts.target)
+        try:
+            show_target_closures(closures, opts.target)
+        except KeyError:
+            parser.error("Target '{}' not found in closures.".format(opts.target))
     else:
         show_closures(closures)
         
