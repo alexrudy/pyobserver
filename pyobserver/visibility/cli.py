@@ -19,6 +19,7 @@ import pyshell.loggers
 from pyshell import PYSHELL_LOGGING_STREAM_ALL
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
+from astropy.coordinates.name_resolve import NameResolveError
 
 from pyobserver.visibility import VisibilityPlot, Observatory, Target
 from pyobserver.starlist import read_skip_comments
@@ -94,7 +95,10 @@ class VisibilityCLI(SCEngine):
         
     def set_date(self):
         """Set the date from command-line arguments."""
-        self.opts.date =  Time(self.opts.date, scale='utc')
+        try:
+            self.opts.date =  Time(self.opts.date, scale='utc')
+        except ValueError:
+            self.parser.error("Can't parse '{}' as a date.".format(self.opts.date))
         
     def set_filename(self):
         """Set the filename from command-line arguments."""
@@ -103,8 +107,11 @@ class VisibilityCLI(SCEngine):
             
     def set_observatory(self):
         """Setup the observatory object."""
-        self.opts.observatory = Observatory.from_name(self.opts.observatory)
-        
+        try:
+            self.opts.observatory = Observatory.from_name(self.opts.observatory)
+        except KeyError:
+            from pyobserver.visibility.observatory import _observatories_data
+            self.parser.error("Observatory '{!s}' does not exist.\nObservatories: {!r}".format(self.opts.observatory, list(_observatories_data.keys())))
 
     
 class StarlistVisibility(VisibilityCLI):
@@ -120,12 +127,18 @@ class StarlistVisibility(VisibilityCLI):
         
     def set_targets(self, v_plotter):
         """Setup targets"""
+        if not os.path.exists(self.opts.starlist):
+            self.parser.error("Starlist '{}' does not exist.".format(self.opts.starlist))
+        
         for target_line in read_skip_comments(self.opts.starlist):
-            t = Target.from_starlist(target_line)
+            try:
+                t = Target.from_starlist(target_line)
+            except ValueError:
+                self.parser.error("Can't parse line '{}' as starlist.".format(target_line))
             self.log.log(_ll(2), t)
             v_plotter.add(t)
         if self.opts.psffilter:
-            v_plotter.targets = filter(lambda target : not bool(getattr(target, 'psf', False)),v_plotter.targets)
+            v_plotter.targets = filter(lambda target : not bool(getattr(target, 'psf', False)), v_plotter.targets)
         if self.opts.gsfilter:
             v_plotter.targets = list(v_plotter.filter_gs_targets())
             
@@ -154,7 +167,11 @@ class TargetVisibility(VisibilityCLI):
     
     def set_targets(self, v_plotter):
         """Setup the single target."""
-        t = Target(name=self.opts.target, position=SkyCoord.from_name(self.opts.target, frame='icrs'))
+        try:
+            t = Target(name=self.opts.target, position=SkyCoord.from_name(self.opts.target, frame='icrs'))
+        except NameResolveError:
+            self.parser.error("Can't parse/locate '{}' as a target.".format(self.opts.target))
+        
         self.log.log(_ll(2), t)
         v_plotter.add(t)
         if not self.opts.gsfilter:
