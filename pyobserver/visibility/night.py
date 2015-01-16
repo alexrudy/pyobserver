@@ -20,10 +20,13 @@ import astropy.table
 from astropy.utils.console import ProgressBar
 import pandas as pd
 from astropyephem.targets import Sun, Moon
+from astropy.coordinates import SkyCoord
 import sys
 import warnings
 import matplotlib
 import matplotlib.dates
+
+from ..closures import FixedRegion
 
 def latex_verbose(text):
     """Make LaTeX verbose text if matplotlib is using TeX for rendering."""
@@ -299,6 +302,44 @@ class VisibilityPlot(EphemerisPlotBase):
         self._last_pick = None
         self._timeline = ax.axvline(datetime.datetime.utcnow(), color='k', zorder=0.1, alpha=0.75)
         
+    def time_now(self):
+        """Return a tuple of (utc, local) datetime objects."""
+        utc_now = pytz.UTC.localize(datetime.datetime.utcnow())
+        local_now = utc_now.astimezone(self.night.observer.timezone)
+        return (utc_now, local_now)
+        
+    def clock_text(self):
+        """Get the pair of clock texts."""
+        utc_now, local_now = self.time_now()
+        local_tz = self.night.observer.timezone
+        utc_tz = pytz.UTC
+        local_text = "{0:%Y/%m/%d} {0:%H:%M:%S} {1:s}".format(local_now, local_tz)
+        utc_text = "{0:%Y/%m/%d} {0:%H:%M:%S} {1:s}".format(utc_now, utc_tz)
+        return (utc_text, local_text)
+        
+        
+    def setup_clock(self, ax):
+        """Set up the clock display."""
+        utc, local = self.clock_text()
+        self._local_text = ax.text(1+0.35/2, -0.01, local, transform=ax.transAxes, va='bottom', ha='center')
+        self._utc_text = ax.text(1+0.35/2, 0.05, utc, transform=ax.transAxes, va='bottom', ha='center')
+        self._clock_timer = ax.figure.canvas.new_timer(interval=100)
+        self._clock_timer.add_callback(self.update_clock)
+        self._clock_timer.add_callback(self.refresh_timeline, ax)
+        self._clock_timer.start()
+        
+    def update_clock(self):
+        """docstring for update_clock"""
+        utc, local = self.clock_text()
+        self._utc_text.set_text(utc)
+        self._local_text.set_text(local)
+        self._canvas.draw()
+        
+    def refresh_timeline(self, ax):
+        """Refresh a timeline on an axes."""
+        now = datetime.datetime.utcnow()
+        self._timeline.set_xdata([now, now])
+    
     def on_pick(self, event):
         """Action to take on a pick event."""
         if event.artist not in self._lines:
@@ -333,10 +374,6 @@ class VisibilityPlot(EphemerisPlotBase):
             self._annotation.remove()
         if self._marker is not None:
             self._marker.remove()
-        if self._timeline is not None:
-            self._timeline.remove()
-        
-        self._timeline = ax.axvline(datetime.datetime.utcnow(), color='k', zorder=0.1, alpha=0.75)
         self._marker, = ax.plot(xp, yp, 'o')
         self._marker.set_color(artist.get_color())
         text = "\n".join([artist.get_label(), "Airmass: {0.value:.2f}".format(airmass(yp*u.degree)), "UT: {:}".format(xp.strftime("%H:%M"))])
@@ -348,105 +385,152 @@ class VisibilityPlot(EphemerisPlotBase):
             size = 'small',
             bbox=dict(boxstyle="round", fc="white", ec=artist.get_color()),
         )
-        self._canvas.draw()
-    
-    def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
-                    moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(50 * u.degree),
-                    output=False, min_elevation = None):
-        """Make a visibility plot on a given axes object."""
-        self._unit = unit
-        ylim_values = (el[0].to(unit).value, el[1].to(unit).value)
-        text_el_limit = el[0] + 0.1 * (el[1] - el[0])
-        ax_z = self.setup_dual_axis(ax)
-        times = self.night.times(self.increment)
         
-        progress, finish, stream = _console_output_functions(output)
+        self.refresh_timeline(ax)
+        self._canvas.draw()
+        
+    def show_closures(self, region, alt):
+        """Show the closures lines."""
+        lines = []
+        for closure in region.closures:
+            s = (self._times > closure.start) & (self._times < closure.end)
+            t = astropy.time.Time(np.concatenate((np.array([closure.start.datetime]), self._times[s].datetime, np.array([closure.end.datetime]))))
+            a = np.interp(t.plot_date, self._times.plot_date, alt.to(self._unit).value) * self._unit
+            l, = self._ax.plot(t.datetime, a.to(self._unit).value, 'r-', lw=3)
+            lines.append(l)
+        return tuple(lines)
+    
+    def show_target(self, target, moon_pos, moon_distance_spacing, moon_distance_maximum):
+        """Show a single target on the visibility plotter."""
+        altitude_angle = np.zeros((len(self._times),), dtype=float) * u.degree
+        moon_distance = np.zeros((len(self._times),), dtype=float) * u.degree
+        last_moon_distance = self.night.start
+        for i,time in enumerate(self._times):
             
-        # Handle the moon.
+            # Compute this postion.
+            self.night.observer.date = time
+            target.compute(self.night.observer)
+            altitude_angle[i] = target.alt
+            moon_distance[i] = moon_pos[i].separation(target.position)
+            
+            # Only add the moon distance every few minutes, and when the moon is realtively close to the object
+            if ((last_moon_distance + moon_distance_spacing <= time) and 
+                (altitude_angle[i] >= self._text_el_limit and moon_distance[i] <= moon_distance_maximum)):                    
+                annotate = self._ax.annotate(
+                    s = "{0.value:0.0f} {0.unit:latex}".format(moon_distance[i]),
+                    xy = (time.datetime, altitude_angle[i].to(self._unit).value),
+                    xytext = [-5.0, 0.0],
+                    textcoords = 'offset points',
+                    size = 'x-small',
+                    alpha = 0.5)
+                last_moon_distance = time
+        
+        # Finally, do the plotting!
+        target_z, = self._ax_z.plot(self._times.datetime, altitude_angle.to(self._unit).value, ':')                
+        target_l, = self._ax.plot(self._times.datetime, altitude_angle.to(self._unit).value, '-', label=latex_verbose(target.name))
+        if isinstance(target, FixedRegion):
+            self.show_closures(target, altitude_angle)
+        self._lines.add(target_l)
+        
+    def show_moon(self):
+        """Show the moon."""
         moon_pos = []
-        altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
-        for i, time in enumerate(times):
+        altitude_angle = np.zeros((len(self._times),), dtype=float) * u.degree
+        for i, time in enumerate(self._times):
             self.night.observer.date = time
             moon_pos.append(self.night.moon.position)
             altitude_angle[i] = self.night.moon.alt
-        moon_z, = ax_z.plot(times.datetime, altitude_angle.to(unit).value, 'k--', alpha=0.0)
-        moon, = ax.plot(times.datetime, altitude_angle.to(unit).value, 'k--', label=r"Moon", alpha=0.5)
+        moon_z, = self._ax_z.plot(self._times.datetime, altitude_angle.to(self._unit).value, 'k--', alpha=0.0)
+        moon, = self._ax.plot(self._times.datetime, altitude_angle.to(self._unit).value, 'k--', label=r"Moon", alpha=0.5)
         self._lines.add(moon)
-        
-        for target in ProgressBar(self.targets, file=stream):
-            altitude_angle = np.zeros((len(times),), dtype=float) * u.degree
-            moon_distance = np.zeros((len(times),), dtype=float) * u.degree
-            last_moon_distance = self.night.start
-            for i,time in enumerate(times):
-                self.night.observer.date = time
-                target.compute(self.night.observer)
-                altitude_angle[i] = target.alt
-                moon_distance[i] = moon_pos[i].separation(target.position)
-                if ((last_moon_distance + moon_distance_spacing <= time) and 
-                    (altitude_angle[i] >= text_el_limit and moon_distance[i] <= moon_distance_maximum)):                    
-                    annotate = ax.annotate(
-                        s = "{0.value:0.0f} {0.unit:latex}".format(moon_distance[i]),
-                        xy = (time.datetime, altitude_angle[i].to(unit).value),
-                        xytext = [-5.0, 0.0],
-                        textcoords = 'offset points',
-                        size = 'x-small',
-                        alpha = 0.5)
-                    last_moon_distance = time
-                
-            target_z, = ax_z.plot(times.datetime, altitude_angle.to(unit).value, ':')                
-            target, = ax.plot(times.datetime, altitude_angle.to(unit).value, '-', label=latex_verbose(target.name))
-            self._lines.add(target)
-
-        
+        return SkyCoord([ m.ra for m in moon_pos],[ m.dec for m in moon_pos ], frame='icrs')
+    
+    def show_sunrise_sunset(self):
+        """Show the sunrise and sunset times."""
         # Sunrise and Sunset lines.
         xmin, xmax = (self.night.start - 1.0 * u.hour), (self.night.end + 1.0 * u.hour)
-        ax.set_xlim(xmin.datetime, xmax.datetime)
-        ax.axvspan(xmin.datetime, self.night.start.datetime, color='k', alpha=0.2)
-        ax.axvspan(xmax.datetime, self.night.end.datetime, color='k', alpha=0.2)
+        self._ax.set_xlim(xmin.datetime, xmax.datetime)
+        self._ax.axvspan(xmin.datetime, self.night.start.datetime, color='k', alpha=0.2)
+        self._ax.axvspan(xmax.datetime, self.night.end.datetime, color='k', alpha=0.2)
         
         # Label Bright Zones
-        ax.text(0.02, 0.5, "Before Sunset", transform=ax.transAxes, va='center', ha='left', rotation=90)
-        ax.text(0.98, 0.5, "After Sunrise", transform=ax.transAxes, va='center', ha='right', rotation=90)
-        
-        if min_elevation is not None:
-            # Label minimum elevation
-            ax.axhline(u.Quantity(min_elevation, u.degree).to(u.degree).value, ls=':', lw = 2, color = 'r', alpha = 0.75, label="Minimum Elevation")
-        
-        # Axis formatting
-        ax.grid(True, axis='both')
-        ax.xaxis.tick_bottom()
-        ax.xaxis.set_label_position('bottom')
-        self.format_timezone_axis(ax.xaxis, "UTC", fmt="%H:%M")
-        self.format_units_axis(ax.yaxis, unit, "Elevation")
+        self._ax.text(0.02, 0.5, "Before Sunset", transform=self._ax.transAxes, va='center', ha='left', rotation=90)
+        self._ax.text(0.98, 0.5, "After Sunrise", transform=self._ax.transAxes, va='center', ha='right', rotation=90)
+    
+    def format_xaxes(self):
+        """Format the xaxes."""
+        self._ax.xaxis.tick_bottom()
+        self._ax.xaxis.set_label_position('bottom')
+        self.format_timezone_axis(self._ax.xaxis, "UTC", fmt="%H:%M")
         
         # Add dates to UTC axis.
-        ax.text(-0.015, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.start), transform=ax.transAxes, va='top', ha='right',
+        self._ax.text(-0.015, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.start), transform=self._ax.transAxes, va='top', ha='right',
              color='k')
-        ax.text(1.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.end), transform=ax.transAxes, va='top', ha='left',
+        self._ax.text(1.02, -0.05, "{0.datetime:%Y/%m/%d}".format(self.night.end), transform=self._ax.transAxes, va='top', ha='left',
              color='k')
         
         # 2nd Axis Formatting
-        ax_z.xaxis.tick_top()
-        ax_z.xaxis.set_visible(True)
-        ax_z.xaxis.set_label_position('top')
-        self.format_timezone_axis(ax_z.xaxis, self.night.observer.timezone, fmt="%H:%M")
-        self.format_airmass_axis(ax_z.yaxis, unit)
+        self._ax_z.xaxis.tick_top()
+        self._ax_z.xaxis.set_visible(True)
+        self._ax_z.xaxis.set_label_position('top')
+        self.format_timezone_axis(self._ax_z.xaxis, self.night.observer.timezone, fmt="%H:%M")
         
         # Add dates to localtime axis.
         local_tz = self.night.observer.timezone
         utc_tz = pytz.UTC
         local_start = utc_tz.localize(self.night.start.datetime).astimezone(local_tz)
         local_end = utc_tz.localize(self.night.end.datetime).astimezone(local_tz)
-        ax.text(-0.015, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=ax.transAxes, va='bottom', ha='right',)
-        ax.text(1.02, 1.05, "{0:%Y/%m/%d}".format(local_end), transform=ax.transAxes, va='bottom', ha='left',)
-        ax.text(1+0.35/2, 0.02, "{0:s}".format(self.night.observer.name), transform=ax.transAxes, va='bottom', ha='center',)
+        self._ax.text(-0.015, 1.05, "{0:%Y/%m/%d}".format(local_start), transform=self._ax.transAxes, va='bottom', ha='right',)
+        self._ax.text(1.02, 1.05, "{0:%Y/%m/%d}".format(local_end), transform=self._ax.transAxes, va='bottom', ha='left',)
+        self._ax.text(1+0.35/2, 0.02, "{0:s}".format(self.night.observer.name), transform=self._ax.transAxes, va='bottom', ha='center',)
         
+    
+    
+    def __call__(self, ax, el=(1.0 * u.degree, 90 * u.degree), unit=u.degree, legend="Outside",
+                    moon_distance_spacing=(60 * u.minute), moon_distance_maximum=(50 * u.degree),
+                    output=False, min_elevation = None):
+        """Make a visibility plot on a given axes object."""
+        if hasattr(self, '_ax') and self._ax is not None:
+            raise ValueError("Can't re-plot!")
+        
+        # Persist a few settings.
+        self._unit = unit
+        self._times = self.night.times(self.increment)
+        
+        # Values for the elevation limits.
+        ylim_values = (el[0].to(unit).value, el[1].to(unit).value)
+        self._text_el_limit = el[0] + 0.1 * (el[1] - el[0])
+        
+        # Set up the axes.
+        self._ax = ax
+        self._ax_z = self.setup_dual_axis(ax)
+        
+        progress, finish, stream = _console_output_functions(output)
+            
+        # Handle the moon.
+        moon_pos = self.show_moon()
+        
+        # Show the targets.
+        for target in ProgressBar(self.targets, file=stream):
+            self.show_target(target, moon_pos, moon_distance_spacing, moon_distance_maximum)
+        
+        self.show_sunrise_sunset()
+        
+        if min_elevation is not None:
+            # Label minimum elevation
+            ax.axhline(u.Quantity(min_elevation, u.degree).to(u.degree).value, ls=':', lw = 2, color = 'r', alpha = 0.75, label="Minimum Elevation")
+        
+        # Axis formatting
+        self._ax.grid(True, axis='both')
+        self.format_xaxes()
+        self.format_units_axis(self._ax.yaxis, unit, "Elevation")
+        self.format_airmass_axis(self._ax_z.yaxis, unit)
         
         # Axis limits
-        ax.set_ylim(*ylim_values)
+        self._ax.set_ylim(*ylim_values)
         # We have to keep the 2nd axis limits in sync with the first axis, by hand.
-        ax_z.set_ylim(*ax.get_ylim())
-        ax_z.set_xlim(*ax.get_xlim())
+        self._ax_z.set_ylim(*self._ax.get_ylim())
+        self._ax_z.set_xlim(*self._ax.get_xlim())
         
         # Apply the legend.
         legend_bboxes = {
