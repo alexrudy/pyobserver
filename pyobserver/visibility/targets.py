@@ -122,8 +122,6 @@ class Starlist(list):
     def to_starlist(self, filename):
         """docstring for to_starlist"""
         with open(filename, 'w') as stream:
-            stream.write("# Starlist: {}".format(os.path.basename(filename)))
-            stream.write("\n")
             for target in self:
                 stream.write(target.to_starlist())
                 stream.write("\n")
