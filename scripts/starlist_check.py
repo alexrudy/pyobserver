@@ -19,7 +19,7 @@ from pyobserver.starlist import (
 
 if __name__ == '__main__':
     
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Check a Keck format starlist for errors.")
     parser.add_argument("starlist", type=six.text_type)
     opt = parser.parse_args()
     
