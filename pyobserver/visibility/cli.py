@@ -197,6 +197,7 @@ class StarlistVisibility(VisibilityCLI):
     
     def init_positional(self):
         """Setup positional arguments"""
+        self.parser.add_argument("--closures", type=six.text_type, help="Closures filename")
         self.parser.add_argument("starlist", type=six.text_type, help="Starlist Filename")
         
     def set_targets(self, v_plotter):
@@ -219,8 +220,20 @@ class StarlistVisibility(VisibilityCLI):
             basename = os.path.splitext(os.path.basename(self.opts.starlist))[0]
             self.opts.output = "visibility_{1:s}_{0.datetime:%Y%m%d}.pdf".format(self.opts.date, basename)
             
-    
+    def filter_targets(self, plotter):
+        """Adjust filter_targets to handle closures file."""
+        if getattr(self.opts, 'closures', None) is not None:
+            if not os.path.exists(self.opts.closures):
+                self.parser.error("Closure file '{}' does not exist.".format(self.opts.closures))
             
+            with open(self.opts.closures, 'r') as stream:
+                regions = { region.name:region for region in parse_closures_list(stream, self.opts.closures, date=self.opts) }
+            for i,target in enumerate(plotter.targets):
+                if target.name in regions:
+                    plotter.targets[i] = regions[target.name]
+        super(StarlistVisibility, self).filter_targets(plotter)
+        
+
 class TargetVisibility(VisibilityCLI):
     """A visibility plotter for a single target."""
     
