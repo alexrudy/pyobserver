@@ -7,6 +7,7 @@ import six
 import re
 import os, os.path
 import textwrap
+import datetime
 
 def parse_closures(filename, date=None):
     """Parse and understand closures."""
@@ -80,11 +81,12 @@ def main():
         except ValueError:
             parser.error("Cannot parse '{:s}' as date.".format(opts.when))
     else:
-        m = re.match(r"opens[Unix|Dos](?P<date>[\d]{6})\.txt", opts.filename)
+        m = re.match(r"opens(?:Unix|Dos)(?P<date>[\d]{6})\.txt", opts.filename)
         if m:
-            iso_str = "-".join(m.groupdict()['date'][::2])
-            opts.when = astropy.time.Time(iso_str, scale='utc', format='iso')
+            date = datetime.datetime.strptime(m.groupdict()['date'], "%y%m%d")
+            opts.when = astropy.time.Time(date, scale='utc')
         else:
+            print("Assuming today's date.")
             opts.when = astropy.time.Time.now()
     
     try:
