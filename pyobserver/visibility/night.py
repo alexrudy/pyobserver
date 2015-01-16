@@ -26,8 +26,6 @@ import warnings
 import matplotlib
 import matplotlib.dates
 
-from ..closures import FixedRegion
-
 def latex_verbose(text):
     """Make LaTeX verbose text if matplotlib is using TeX for rendering."""
     if matplotlib.rcParams['text.usetex']:
@@ -402,6 +400,7 @@ class VisibilityPlot(EphemerisPlotBase):
     
     def show_target(self, target, moon_pos, moon_distance_spacing, moon_distance_maximum):
         """Show a single target on the visibility plotter."""
+        from ..closures import FixedRegion
         altitude_angle = np.zeros((len(self._times),), dtype=float) * u.degree
         moon_distance = np.zeros((len(self._times),), dtype=float) * u.degree
         last_moon_distance = self.night.start
