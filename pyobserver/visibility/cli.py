@@ -166,7 +166,7 @@ class ClosureVisibility(VisibilityCLI):
     def filter_targets(self, plotter):
         """docstring for filter_targets"""
         sep = 2 * u.arcmin
-        if hasattr(self.opts, 'starlist'):
+        if getattr(self.opts, 'starlist', None) is not None:
             if not os.path.exists(self.opts.starlist):
                 self.parser.error("Starlist file '{}' does not exist.".format(self.opts.starlist))
             sl = Starlist.from_starlist(self.opts.starlist)
