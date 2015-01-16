@@ -135,8 +135,10 @@ class Starlist(list):
     
     def catalog(self):
         """Return a unified catalog array from the targets."""
-        ras =  np.array([ target.fixed_position.ra.value for target in self ]) * self[0].fixed_position.ra.unit
-        decs = np.array([ target.fixed_position.dec.value for target in self ]) * self[0].fixed_position.dec.unit
+        ra_u = self[0].fixed_position.ra.unit
+        dec_u = self[0].fixed_position.dec.unit
+        ras =  np.array([ target.fixed_position.ra.to(ra_u).value for target in self ]) * ra_u
+        decs = np.array([ target.fixed_position.dec.to(dec_u).value for target in self ]) * dec_u
         return SkyCoord(ras, decs, frame='icrs')
     
     def __setitem__(self, key, value):
